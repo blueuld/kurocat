@@ -5,6 +5,11 @@
 //! - 输入法上屏时文本才真正变长，因此拼音过程不会虚高；
 //! - 退格/删除让长度变短，直接回退计数；
 //! - 长度跳变超过阈值（切换窗口、打开大文档、粘贴）一律视为换上下文，不计数。
+//!
+//! 取文本走三级回退，尽量覆盖不同年代的应用：
+//! 1. TextPattern          —— 现代应用（记事本、浏览器、Office、多数 Electron）
+//! 2. ValuePattern         —— 标准编辑框的 Value 属性（大量老 Win32 / Qt 程序）
+//! 3. LegacyIAccessible    —— MSAA 兜底，覆盖 Win7 时代的控件
 
 use tauri::AppHandle;
 
@@ -24,7 +29,9 @@ fn run_windows(app: AppHandle) {
         CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
     };
     use windows::Win32::UI::Accessibility::{
-        CUIAutomation, IUIAutomation, IUIAutomationTextPattern, UIA_TextPatternId,
+        CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationLegacyIAccessiblePattern,
+        IUIAutomationTextPattern, IUIAutomationValuePattern, UIA_LegacyIAccessiblePatternId,
+        UIA_TextPatternId, UIA_ValuePatternId,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 
@@ -33,6 +40,40 @@ fn run_windows(app: AppHandle) {
     /// 单次长度跳变阈值：超过视为切换上下文或粘贴，不计入
     const MAX_STEP: i64 = 20;
     const POLL_MS: u64 = 240;
+
+    /// 按三级回退读取焦点控件的文本长度（字符数）。
+    unsafe fn text_len_of(element: &IUIAutomationElement) -> Option<usize> {
+        if let Ok(pattern) = element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)
+        {
+            if let Ok(range) = pattern.DocumentRange() {
+                if let Ok(text) = range.GetText(MAX_CHARS) {
+                    let len = text.to_string().chars().count();
+                    // 达到上限说明是超大文档，长度不可信，直接放弃
+                    if len < MAX_CHARS as usize {
+                        return Some(len);
+                    }
+                    return None;
+                }
+            }
+        }
+
+        if let Ok(pattern) = element.GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId)
+        {
+            if let Ok(value) = pattern.CurrentValue() {
+                return Some(value.to_string().chars().count());
+            }
+        }
+
+        if let Ok(pattern) =
+            element.GetCurrentPatternAs::<IUIAutomationLegacyIAccessiblePattern>(UIA_LegacyIAccessiblePatternId)
+        {
+            if let Ok(value) = pattern.CurrentValue() {
+                return Some(value.to_string().chars().count());
+            }
+        }
+
+        None
+    }
 
     unsafe {
         let com_inited = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
@@ -74,12 +115,10 @@ fn run_windows(app: AppHandle) {
                 continue;
             }
 
-            let pattern = match element
-                .GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)
-            {
-                Ok(pattern) => pattern,
-                Err(_) => {
-                    // 该控件不支持 TextPattern（游戏、部分终端等）：通知前端改用键码兜底
+            let len = match text_len_of(&element) {
+                Some(len) => len as i64,
+                None => {
+                    // 三级都读不到（游戏、自绘控件）：通知前端改用键码兜底
                     last_len = -1;
                     if last_mode != Some(false) {
                         last_mode = Some(false);
@@ -92,21 +131,6 @@ fn run_windows(app: AppHandle) {
             if last_mode != Some(true) {
                 last_mode = Some(true);
                 let _ = app.emit("kuro-text-mode", true);
-            }
-
-            let range = match pattern.DocumentRange() {
-                Ok(range) => range,
-                Err(_) => continue,
-            };
-            let text = match range.GetText(MAX_CHARS) {
-                Ok(text) => text,
-                Err(_) => continue,
-            };
-
-            let len = text.to_string().chars().count() as i64;
-            if len >= MAX_CHARS as i64 {
-                last_len = len;
-                continue;
             }
 
             if last_len >= 0 {
