@@ -271,6 +271,7 @@ pub struct AppState {
     pub update_banner_open: Arc<AtomicBool>,
     pub paused_guard: Arc<AtomicBool>,
     pet_mask: Arc<Mutex<Option<PetMask>>>,
+    hit_diag: Arc<Mutex<HitDiag>>,
 }
 
 /// Shared Chromium / WebView2 lean runtime flags.
@@ -399,6 +400,34 @@ impl PetMask {
         }
         false
     }
+}
+
+/// 命中判定的现场快照，仅用于排查（get_hit_diag 读取）
+#[derive(Clone, Copy)]
+struct HitDiag {
+    rx: f64,
+    ry: f64,
+    inside: bool,
+    over: bool,
+    mask_present: bool,
+    mask_hit: bool,
+    mask_size: u32,
+    mask_bits: u32,
+}
+
+impl Default for HitDiag {
+    fn default() -> Self {
+        Self { rx: -1.0, ry: -1.0, inside: false, over: false, mask_present: false, mask_hit: false, mask_size: 0, mask_bits: 0 }
+    }
+}
+
+#[tauri::command]
+fn get_hit_diag(state: State<'_, AppState>) -> String {
+    let d = *state.hit_diag.lock().unwrap();
+    format!(
+        "rx={:.3} ry={:.3} inside={} over={} mask={} maskHit={} size={} bits={}",
+        d.rx, d.ry, d.inside, d.over, d.mask_present, d.mask_hit, d.mask_size, d.mask_bits
+    )
 }
 
 /// 前端推送实时轮廓掩码。`size == 0` 或 `bits` 为空表示清空（主进程回退几何判定）。
@@ -1977,6 +2006,7 @@ fn start_hit_test_loop(
 ) {
     let tail_picker_bounds = app.state::<AppState>().tail_picker_bounds.clone();
     let pet_mask = app.state::<AppState>().pet_mask.clone();
+    let hit_diag = app.state::<AppState>().hit_diag.clone();
     std::thread::spawn(move || {
         let mut last_ignore: Option<bool> = None;
         let mut last_cursor: (i32, i32) = (i32::MIN, i32::MIN);
@@ -2210,6 +2240,26 @@ fn start_hit_test_loop(
                 Some(hit) => (hit, geometry.1),
                 None => geometry,
             };
+
+            if let Ok(mut diag) = hit_diag.try_lock() {
+                let (present, size, bits) = match pet_mask.try_lock() {
+                    Ok(g) => match g.as_ref() {
+                        Some(m) => (true, m.size, m.bits.iter().map(|b| b.count_ones()).sum::<u32>()),
+                        None => (false, 0, 0),
+                    },
+                    Err(_) => (false, 0, 0),
+                };
+                *diag = HitDiag {
+                    rx,
+                    ry,
+                    inside,
+                    over: over_interactive,
+                    mask_present: present,
+                    mask_hit: mask_hit.unwrap_or(false),
+                    mask_size: size,
+                    mask_bits: bits,
+                };
+            }
             // 悬停淡出：鼠标停在猫身上超过 350ms 就淡化并让出点击，移开立即恢复。
             // 快速点击（不足 350ms）仍然可以撸猫。
             // 触发范围用 over_interactive（猫身椭圆 + 键盘/鼠标区域），
@@ -2920,6 +2970,7 @@ pub fn run() {
             update_banner_open,
             paused_guard,
             pet_mask: Arc::new(Mutex::new(None)),
+            hit_diag: Arc::new(Mutex::new(HitDiag::default())),
         })
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -3140,6 +3191,7 @@ pub fn run() {
             start_pet_drag,
             set_update_banner_open,
             set_pet_mask,
+            get_hit_diag,
             is_win7_ulw_mode,
             win7_present_frame,
             win7_sync_overlay,
