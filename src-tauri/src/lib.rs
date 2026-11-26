@@ -1819,6 +1819,21 @@ fn is_over_interactive_silhouette(rx: f64, ry: f64, is_108: bool) -> (bool, bool
     let dy_cat = (ry - 0.49) / 0.27;
     let over_cat = (dx_cat * dx_cat + dy_cat * dy_cat) <= 1.0;
 
+    // 65% 布局下整只猫相对 108 键略偏左，补一个水平偏移，下面的补充区域共用。
+    let x_shift = if is_108 { 0.0 } else { -0.03 };
+
+    // 耳尖与头顶：竖直方向椭圆够不到（实测 y 0.17~0.25 的那一截），单独补一块。
+    let over_head_top = (0.29 + x_shift..=0.73 + x_shift).contains(&rx)
+        && (0.13..=0.30).contains(&ry);
+
+    // 甩到身侧的尾巴：实测在 x 0.62~0.80、y 0.44~0.62，椭圆只覆盖到 0.72，会漏掉尾尖。
+    let dx_tail = (rx - (0.72 + x_shift)) / 0.14;
+    let dy_tail = (ry - 0.53) / 0.11;
+    let over_tail = (dx_tail * dx_tail + dy_tail * dy_tail) <= 1.0;
+
+    // 伸出去的爪子：左爪常抬起敲键盘，会从身体左侧探出一段（实测 x 0.10~0.21, y 0.67~0.79）。
+    let over_paw = (ry >= 0.56 && ry <= 0.82) && (rx >= 0.04 + x_shift && rx <= 0.34 + x_shift);
+
     // Keyboard & mouse lower area
     let over_desk = if is_108 {
         rx >= 0.04 && rx <= 0.94 && ry >= 0.65 && ry <= 0.94
@@ -1826,7 +1841,9 @@ fn is_over_interactive_silhouette(rx: f64, ry: f64, is_108: bool) -> (bool, bool
         rx >= 0.06 && rx <= 0.92 && ry >= 0.65 && ry <= 0.91
     };
 
-    (over_cat || over_desk, over_cat)
+    // 只有猫身椭圆算「撸猫」目标；其余区域仅用于悬停让位与点击命中。
+    let over_any = over_cat || over_head_top || over_tail || over_paw || over_desk;
+    (over_any, over_cat)
 }
 
 fn tail_picker_captures_cursor(
