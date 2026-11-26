@@ -77,6 +77,10 @@
     "checking_short": "检测中...",
     "quit": "退出"
   },
+  "stats": {
+    "today": "今日 {count} 字",
+    "speed": "{cpm} 字/分"
+  },
   "breeds": {
     "black": "经典小黑猫",
     "ragdoll": "暖奶茶布偶猫",

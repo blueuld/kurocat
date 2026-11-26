@@ -77,6 +77,10 @@
     "checking_short": "Checking...",
     "quit": "Quit"
   },
+  "stats": {
+    "today": "Today {count} chars",
+    "speed": "{cpm} cpm"
+  },
   "breeds": {
     "black": "Black Cat",
     "ragdoll": "Ragdoll",

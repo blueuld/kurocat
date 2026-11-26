@@ -1201,9 +1201,8 @@ async function bootstrap(): Promise<void> {
   const renderTypingStats = (): void => {
     if (!typingStatsEl) return;
     const { today, cpm } = typingStats.snapshot();
-    typingStatsEl.textContent = cpm > 0
-      ? `今日 ${today.toLocaleString()} 字 · ${cpm} 字/分`
-      : `今日 ${today.toLocaleString()} 字`;
+    const total = t('stats.today', { count: today.toLocaleString() });
+    typingStatsEl.textContent = cpm > 0 ? `${total} · ${t('stats.speed', { cpm })}` : total;
   };
   const STATS_POS_KEY = 'kurocat.typing-stats.pos';
   const applyStatsPosition = (): void => {

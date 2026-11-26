@@ -77,6 +77,10 @@
     "checking_short": "確認中...",
     "quit": "終了"
   },
+  "stats": {
+    "today": "今日 {count} 文字",
+    "speed": "{cpm} 文字/分"
+  },
   "breeds": {
     "black": "黒猫",
     "ragdoll": "ラグドール",

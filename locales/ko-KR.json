@@ -77,6 +77,10 @@
     "checking_short": "확인 중...",
     "quit": "종료"
   },
+  "stats": {
+    "today": "오늘 {count}자",
+    "speed": "{cpm} 타/분"
+  },
   "breeds": {
     "black": "검은 고양이",
     "ragdoll": "랙돌",
