@@ -10,6 +10,10 @@ on:
   push:
     branches:
       - stats-patch
+    # 只改文档/说明时不重新打包，避免同一版本号被反复覆盖发布
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
   workflow_dispatch:
 
 permissions:
