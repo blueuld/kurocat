@@ -279,6 +279,10 @@ function syncUI(): void {
   document.querySelectorAll<HTMLButtonElement>('[data-rendermode]').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.rendermode === renderMode);
   });
+  const statsPos = localStorage.getItem('kurocat.typing-stats.pos') || 'bottom';
+  document.querySelectorAll<HTMLButtonElement>('[data-statspos]').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.statspos === statsPos);
+  });
   document.querySelectorAll<HTMLButtonElement>('[data-collar]').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.collar === collarColor);
   });
@@ -493,7 +497,7 @@ async function bootstrap(): Promise<void> {
     }
 
     const target = (e.target as HTMLElement).closest<HTMLElement>(
-      '[data-action], [data-breed], [data-rendermode], [data-collar], [data-headphonemode], [data-kblayout], [data-kborient], [data-tailmode], [data-fpscap], [data-lang]',
+      '[data-action], [data-breed], [data-rendermode], [data-collar], [data-headphonemode], [data-kblayout], [data-kborient], [data-tailmode], [data-fpscap], [data-lang], [data-statspos]',
     );
     if (!target) return;
 
@@ -513,6 +517,17 @@ async function bootstrap(): Promise<void> {
       const headphoneAttr = target.dataset.headphonemode;
       if (headphoneAttr === 'auto' || headphoneAttr === 'on' || headphoneAttr === 'off') {
         void applySettingsPatch({ headphoneMode: headphoneAttr });
+        return;
+      }
+
+      const statsPosAttr = target.dataset.statspos;
+      if (statsPosAttr === 'bottom' || statsPosAttr === 'tl' || statsPosAttr === 'tr' || statsPosAttr === 'hidden') {
+        const POS_KEY = 'kurocat.typing-stats.pos';
+        if (statsPosAttr === 'bottom') localStorage.removeItem(POS_KEY);
+        else localStorage.setItem(POS_KEY, statsPosAttr);
+        document.querySelectorAll<HTMLButtonElement>('[data-statspos]').forEach((btn) => {
+          btn.classList.toggle('active', btn.dataset.statspos === statsPosAttr);
+        });
         return;
       }
 

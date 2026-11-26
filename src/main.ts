@@ -1205,10 +1205,27 @@ async function bootstrap(): Promise<void> {
       ? `今日 ${today.toLocaleString()} 字 · ${cpm} 字/分`
       : `今日 ${today.toLocaleString()} 字`;
   };
-  if (typingStatsEl) {
+  const STATS_POS_KEY = 'kurocat.typing-stats.pos';
+  const applyStatsPosition = (): void => {
+    if (!typingStatsEl) return;
+    const pos = localStorage.getItem(STATS_POS_KEY) || 'bottom';
+    typingStatsEl.classList.remove('pos-bottom', 'pos-tl', 'pos-tr');
+    if (pos === 'hidden') {
+      typingStatsEl.classList.add('hidden');
+      return;
+    }
     typingStatsEl.classList.remove('hidden');
+    typingStatsEl.classList.add('pos-' + pos);
+  };
+  if (typingStatsEl) {
+    applyStatsPosition();
     renderTypingStats();
     window.setInterval(renderTypingStats, 1000);
+    // 菜单窗口与宠物窗口共享同源 localStorage，storage 事件可跨窗口联动
+    window.addEventListener('storage', (event) => {
+      if (event.key === STATS_POS_KEY) applyStatsPosition();
+    });
+    window.addEventListener('focus', applyStatsPosition);
   }
 
   await listen<InputEvent>('kuro-input', (ev) => {

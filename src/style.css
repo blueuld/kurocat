@@ -1087,8 +1087,6 @@ html.win7-ulw-mode .floating-side-menu {
 /* ── 打字统计 HUD（本地补丁：今日字数 + 实时速度） ── */
 .typing-stats {
   position: absolute;
-  top: 8px;
-  left: 8px;
   z-index: 30;
   padding: 3px 9px;
   border-radius: 999px;
@@ -1105,3 +1103,7 @@ html.win7-ulw-mode .floating-side-menu {
   transition: opacity 0.25s ease;
 }
 .typing-stats.hidden { display: none; }
+/* 位置预设：默认放在键盘下方居中 */
+.typing-stats.pos-bottom { bottom: 6px; left: 50%; transform: translateX(-50%); }
+.typing-stats.pos-tl { top: 8px; left: 8px; }
+.typing-stats.pos-tr { top: 8px; right: 8px; }
