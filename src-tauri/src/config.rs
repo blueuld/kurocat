@@ -192,6 +192,8 @@ pub struct AppSettings {
     pub hover_fade_opacity: f32,
     pub show_key_bubbles: bool,
     pub sound_enabled: bool,
+    #[serde(default)]
+    pub typing_sound_enabled: bool,
     pub autostart: bool,
     #[serde(default = "default_cat_breed")]
     pub cat_breed: String,
@@ -244,6 +246,7 @@ impl Default for AppSettings {
             hover_fade_opacity: 0.12,
             show_key_bubbles: true,
             sound_enabled: true,
+            typing_sound_enabled: false,
             autostart: false,
             cat_breed: default_cat_breed(),
             mcp_enabled: default_mcp_enabled(),
@@ -574,5 +577,29 @@ mod tests {
         let parsed: AppSettings = serde_json::from_str(legacy).expect("legacy json should parse");
         assert_eq!(parsed.tail_key_mode, "smart");
         assert_eq!(parsed.tail_key_ids, default_tail_key_ids());
+        assert!(!parsed.typing_sound_enabled);
+    }
+
+    #[test]
+    fn typing_sound_enabled_round_trips_camel_case() {
+        let raw = r#"{
+            "x": null,
+            "y": null,
+            "scale": 1.0,
+            "alwaysOnTop": true,
+            "clickThroughLocked": false,
+            "showKeyBubbles": true,
+            "soundEnabled": true,
+            "typingSoundEnabled": true,
+            "autostart": false
+        }"#;
+        let parsed: AppSettings = serde_json::from_str(raw).expect("settings with typingSoundEnabled should parse");
+        assert!(parsed.typing_sound_enabled);
+
+        let serialized = serde_json::to_value(&parsed).expect("settings should serialize");
+        assert_eq!(serialized.get("typingSoundEnabled").and_then(|v| v.as_bool()), Some(true));
+
+        let round_tripped: AppSettings = serde_json::from_value(serialized).expect("round-trip should parse");
+        assert!(round_tripped.typing_sound_enabled);
     }
 }

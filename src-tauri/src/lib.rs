@@ -73,6 +73,7 @@ pub fn window_dimensions(layout: &str, scale: f64) -> (f64, f64) {
 /// while explicitly allowing the transparent headspace above the cat's ears (~17% of window height)
 /// to slide above the screen top edge (`y < v_top`), so the cat itself can reach the very top bezel
 /// without ever getting lost off-screen.
+#[cfg(any(windows, test))]
 fn clamp_pet_drag_position(
     x: i32,
     y: i32,
@@ -87,10 +88,11 @@ fn clamp_pet_drag_position(
     let v_bottom = v_top + v_height.max(240);
 
     // Transparent visual padding around the cat/keyboard inside the window:
-    // ~17% empty air above the ears/headset, ~10% side margins, ~8% below keyboard.
+    // ~17% empty air above the ears/headset; 28% side margin allows intentional deep edge-peek push (>=24%)
+    // while always keeping >=72% of the pet window safely on-screen and grabbable on primary/secondary monitors.
     let top_headroom = ((win_h as f64) * 0.17).round() as i32;
-    let side_margin = ((win_w as f64) * 0.10).round() as i32;
-    let min_visible_h = ((win_h as f64) * 0.68).round() as i32;
+    let side_margin = ((win_w as f64) * 0.28).round() as i32;
+    let min_visible_h = ((win_h as f64) * 0.56).round() as i32;
 
     let min_x = v_left - side_margin;
     let max_x = (v_right - win_w + side_margin).max(min_x);
@@ -100,12 +102,185 @@ fn clamp_pet_drag_position(
     (x.clamp(min_x, max_x), y.clamp(min_y, max_y))
 }
 
+/// Computes the union bounding box `(min_x, min_y, max_x, max_y)` in AppKit Y-up points
+/// across all connected `NSScreen` frames `(origin_x, origin_y, width, height)`.
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn macos_screens_union(frames: &[(f64, f64, f64, f64)]) -> Option<(f64, f64, f64, f64)> {
+    let mut iter = frames.iter().copied();
+    let (x0, y0, w0, h0) = iter.next()?;
+    let mut min_x = x0;
+    let mut min_y = y0;
+    let mut max_x = x0 + w0.max(0.0);
+    let mut max_y = y0 + h0.max(0.0);
+    for (x, y, w, h) in iter {
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x + w.max(0.0));
+        max_y = max_y.max(y + h.max(0.0));
+    }
+    Some((min_x, min_y, max_x, max_y))
+}
+
+/// Computes valid AppKit bottom-left `frame.origin` bounds `(min_x, max_x, min_y, max_y)` for a
+/// dragged pet window across the multi-screen union box, allowing ~17% transparent headspace
+/// above the cat's ears to slide past the screen top edge while keeping >=68% visible above the
+/// bottom edge and 28% side margins so users can deliberately push >=24% to enter Edge-Peek.
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn macos_drag_bounds(
+    win_w: f64,
+    win_h: f64,
+    union_min_x: f64,
+    union_min_y: f64,
+    union_max_x: f64,
+    union_max_y: f64,
+) -> (f64, f64, f64, f64) {
+    let win_w = win_w.max(1.0);
+    let win_h = win_h.max(1.0);
+    let v_width = (union_max_x - union_min_x).max(320.0);
+    let v_height = (union_max_y - union_min_y).max(240.0);
+    let v_right = union_min_x + v_width;
+    let v_top = union_min_y + v_height;
+
+    let top_headroom = (win_h * 0.17).round();
+    let side_margin = (win_w * 0.28).round();
+    let min_visible_h = (win_h * 0.68).round();
+
+    let min_x = union_min_x - side_margin;
+    let max_x = (v_right - win_w + side_margin).max(min_x);
+    // AppKit Y-up: `origin.y` is the window bottom edge; `origin.y + win_h` is the top edge.
+    let min_y = union_min_y + min_visible_h - win_h;
+    let max_y = (v_top - win_h + top_headroom).max(min_y);
+
+    (min_x, max_x, min_y, max_y)
+}
+
+/// Converts a Quartz Y-down point (logical pts) into AppKit Y-up global coordinates (logical pts).
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn macos_quartz_to_appkit_point(
+    cg_x: f64,
+    cg_y: f64,
+    primary_height: f64,
+) -> (f64, f64) {
+    (cg_x, primary_height - cg_y)
+}
+
+/// Finds the active macOS screen's `visibleFrame` `(vx, vy, vw, vh)` in AppKit logical points
+/// containing the query point `(px, py)` (in AppKit logical points), matching against full
+/// `frame` bounds so points over the Dock or menu bar still resolve to the right display.
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn macos_active_visible_frame(
+    screens: &[((f64, f64, f64, f64), (f64, f64, f64, f64))],
+    px: f64,
+    py: f64,
+) -> Option<(f64, f64, f64, f64)> {
+    screens
+        .iter()
+        .copied()
+        .find(|&((fx, fy, fw, fh), _)| px >= fx && px < fx + fw && py >= fy && py < fy + fh)
+        .map(|(_, vis)| vis)
+        .or_else(|| {
+            screens
+                .iter()
+                .copied()
+                .min_by(|((ax, ay, aw, ah), _), ((bx, by, bw, bh), _)| {
+                    let da = (px - (ax + aw * 0.5)).hypot(py - (ay + ah * 0.5));
+                    let db = (px - (bx + bw * 0.5)).hypot(py - (by + bh * 0.5));
+                    da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .map(|(_, vis)| vis)
+        })
+}
+
+/// Computes the flush AppKit logical-point `frame.origin` `(sx, sy)` when snapping into
+/// left/right Edge-Peek against a screen's `visibleFrame` `(vx, vy, vw, vh)`.
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn macos_peek_snap_origin(
+    edge: &str,
+    win_y: f64,
+    win_w: f64,
+    win_h: f64,
+    visible_frame: (f64, f64, f64, f64),
+) -> Option<(f64, f64)> {
+    let (vx, vy, vw, vh) = visible_frame;
+    let clamped_y = win_y.clamp(vy, (vy + vh - win_h).max(vy));
+    match edge {
+        "left" => Some((vx, clamped_y)),
+        "right" => Some((vx + vw - win_w, clamped_y)),
+        _ => None,
+    }
+}
+
+/// Converts a Quartz Y-down cursor delta `(cur_cursor - start_cursor)` into a clamped AppKit
+/// Y-up window `frame.origin`.
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn macos_drag_target_origin(
+    start_origin: (f64, f64),
+    start_cursor: (f64, f64),
+    cur_cursor: (f64, f64),
+    bounds: (f64, f64, f64, f64),
+) -> (f64, f64) {
+    let dx = cur_cursor.0 - start_cursor.0;
+    let dy = cur_cursor.1 - start_cursor.1;
+    let raw_x = start_origin.0 + dx;
+    let raw_y = start_origin.1 - dy;
+    let (min_x, max_x, min_y, max_y) = bounds;
+    (raw_x.clamp(min_x, max_x), raw_y.clamp(min_y, max_y))
+}
+
+/// Computes the flush physical-pixel top-left origin `(sx, sy)` when snapping into left/right
+/// Edge-Peek against a monitor work area `(wx, wy, ww, wh)`.
+#[cfg(any(not(target_os = "macos"), test))]
+#[allow(clippy::too_many_arguments)]
+fn compute_edge_peek_snap_pos(
+    edge: &str,
+    pos_y: i32,
+    win_w: i32,
+    win_h: i32,
+    wx: i32,
+    wy: i32,
+    ww: i32,
+    wh: i32,
+) -> Option<(i32, i32)> {
+    let clamped_y = pos_y.clamp(wy, (wy + wh - win_h).max(wy));
+    match edge {
+        "left" => Some((wx, clamped_y)),
+        "right" => Some((wx + ww - win_w, clamped_y)),
+        _ => None,
+    }
+}
+
+/// Computes the anchored window top-left `(new_x, new_y)` after changing scale or keyboard layout:
+/// - In `"left"` Edge-Peek, keeps the LEFT edge flush against the bezel and preserves vertical midpoint.
+/// - In `"right"` Edge-Peek, keeps the RIGHT edge flush against the bezel and preserves vertical midpoint.
+/// - Otherwise preserves the classic bottom-right anchor.
+fn compute_anchored_resize_pos(
+    peek_edge: &str,
+    old_x: i32,
+    old_y: i32,
+    old_w: i32,
+    old_h: i32,
+    new_w: i32,
+    new_h: i32,
+) -> (i32, i32) {
+    match peek_edge {
+        "left" => (old_x, old_y + (old_h - new_h) / 2),
+        "right" => (old_x + old_w - new_w, old_y + (old_h - new_h) / 2),
+        _ => (old_x + old_w - new_w, old_y + old_h - new_h),
+    }
+}
+
 fn resize_window_anchored_bottom_right(
     win: &tauri::WebviewWindow,
     layout: &str,
     scale: f64,
 ) -> Option<(i32, i32)> {
     let (new_w, new_h) = window_dimensions(layout, scale);
+    let active_peek_edge = win
+        .state::<AppState>()
+        .peek_edge
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_else(|_| "none".to_string());
     #[cfg(target_os = "macos")]
     if win
         .state::<AppState>()
@@ -128,7 +303,9 @@ fn resize_window_anchored_bottom_right(
             .windows_display_id
             .clone();
         if let Some(id) = preferred.as_deref() {
-            return windows_display::resize_pinned(win, id, new_w, new_h);
+            if active_peek_edge == "none" {
+                return windows_display::resize_pinned(win, id, new_w, new_h);
+            }
         }
     }
     let sf = win.scale_factor().unwrap_or(1.0);
@@ -140,8 +317,15 @@ fn resize_window_anchored_bottom_right(
         let new_pw = (new_w * sf).round() as i32;
         let new_ph = (new_h * sf).round() as i32;
         if let Some((ox, oy, ow, oh)) = old_rect {
-            let new_x = ox + ow - new_pw;
-            let new_y = oy + oh - new_ph;
+            let (new_x, new_y) = compute_anchored_resize_pos(
+                &active_peek_edge,
+                ox,
+                oy,
+                ow,
+                oh,
+                new_pw,
+                new_ph,
+            );
             if new_x != ox || new_y != oy {
                 win7_layered::set_position(new_x, new_y);
             }
@@ -163,11 +347,23 @@ fn resize_window_anchored_bottom_right(
     let _ = win.set_size(Size::Logical(LogicalSize::new(new_w, new_h)));
 
     if let (Some(pos), Some(sz)) = (old_pos, old_size) {
-        let new_pw = (new_w * sf).round() as i32;
-        let new_ph = (new_h * sf).round() as i32;
-        let (new_x, new_y) = (
-            pos.x + sz.width as i32 - new_pw,
-            pos.y + sz.height as i32 - new_ph,
+        // Read actual post-resize physical outer_size when available so fractional DPI (125%/150%)
+        // never introduces a 1px right-edge rounding seam during Edge-Peek.
+        let actual_sz = win.outer_size().ok();
+        let new_pw = actual_sz
+            .map(|s| s.width as i32)
+            .unwrap_or_else(|| (new_w * sf).round() as i32);
+        let new_ph = actual_sz
+            .map(|s| s.height as i32)
+            .unwrap_or_else(|| (new_h * sf).round() as i32);
+        let (new_x, new_y) = compute_anchored_resize_pos(
+            &active_peek_edge,
+            pos.x,
+            pos.y,
+            sz.width as i32,
+            sz.height as i32,
+            new_pw,
+            new_ph,
         );
         #[cfg(all(not(windows), not(target_os = "macos")))]
         let (new_x, new_y) = (new_x.max(0), new_y.max(0));
@@ -190,12 +386,19 @@ pub fn is_pet_visible(app: &AppHandle) -> bool {
 }
 
 pub fn set_pet_visible(app: &AppHandle, visible: bool) {
+    #[cfg(windows)]
     let on_top = app
         .state::<AppState>()
         .settings
         .lock()
         .unwrap()
         .always_on_top;
+    #[cfg(target_os = "linux")]
+    let saved_position = {
+        let state = app.state::<AppState>();
+        let settings = state.settings.lock().unwrap();
+        settings.x.zip(settings.y)
+    };
 
     #[cfg(windows)]
     if win_needs_win7_ulw() {
@@ -219,11 +422,23 @@ pub fn set_pet_visible(app: &AppHandle, visible: bool) {
     if let Some(win) = app.get_webview_window("main") {
         if visible {
             let _ = win.show();
+            #[cfg(target_os = "linux")]
+            if let Some((x, y)) = saved_position {
+                let _ = win.set_position(PhysicalPosition::new(x, y));
+            }
             #[cfg(windows)]
             if on_top {
                 win_gentle_reassert_topmost(&win);
             }
         } else {
+            #[cfg(target_os = "linux")]
+            if let Ok(position) = win.outer_position() {
+                let state = app.state::<AppState>();
+                let mut settings = state.settings.lock().unwrap();
+                settings.x = Some(position.x);
+                settings.y = Some(position.y);
+                save_settings(&settings);
+            }
             let _ = win.hide();
         }
     }
@@ -272,6 +487,8 @@ pub struct AppState {
     pub paused_guard: Arc<AtomicBool>,
     pet_mask: Arc<Mutex<Option<PetMask>>>,
     hit_diag: Arc<Mutex<HitDiag>>,
+    pub peek_edge: Arc<Mutex<String>>,
+    pub peek_preview_edge: Arc<Mutex<String>>,
 }
 
 /// Shared Chromium / WebView2 lean runtime flags.
@@ -712,7 +929,7 @@ fn update_settings(app: AppHandle, state: State<'_, AppState>, mut patch: AppSet
     patch
 }
 
-const SIDE_MENU_LOGICAL_W: f64 = 276.0;
+const SIDE_MENU_LOGICAL_W: f64 = 298.0;
 
 /// Computes a non-overlapping physical position `(mx, my)` for the floating menu popover
 /// beside the cat window: prefers LEFT (since the cat defaults to bottom-right), then RIGHT,
@@ -802,7 +1019,7 @@ fn current_pet_rect_and_monitor(app: &AppHandle) -> Option<((i32, i32, i32, i32)
 fn side_menu_geometry(app: &AppHandle) -> Option<(i32, i32, f64, f64)> {
     let (pet_rect, work_area, sf) = current_pet_rect_and_monitor(app)?;
     let mon_logical_h = work_area.3 as f64 / sf.max(0.5);
-    let menu_logical_h = (mon_logical_h - 24.0).clamp(360.0, 686.0);
+    let menu_logical_h = (mon_logical_h - 24.0).clamp(360.0, 568.0);
     let mw = (SIDE_MENU_LOGICAL_W * sf).round() as i32;
     let mh = (menu_logical_h * sf).round() as i32;
     let gap = (10.0 * sf).round() as i32;
@@ -1016,17 +1233,532 @@ fn save_tail_picker_selection(
     Ok(updated)
 }
 
-#[tauri::command]
-fn set_dragging(state: State<'_, AppState>, dragging: bool) {
-    state.dragging.store(dragging, Ordering::Relaxed);
+#[cfg(target_os = "macos")]
+static MACOS_NATIVE_DRAG_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "macos")]
+static MACOS_FALLBACK_FINALIZED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(target_os = "macos")]
+struct MacosDragGuard {
+    dragging: Arc<AtomicBool>,
+    app: Option<AppHandle>,
 }
 
-/// Native 120Hz unclamped pointer drag on Windows:
-/// Bypasses Windows' `WM_NCLBUTTONDOWN(HTCAPTION)` titlebar drag loop so Aero Snap never fights
-/// the user and the transparent headspace above the cat's ears can smoothly slide above `y = 0`,
-/// allowing the cat itself to reach the very top edge of any monitor cleanly.
-/// Returns `true` when handled natively (Windows); `false` on other platforms so the frontend
-/// falls back to Tauri's `startDragging()`.
+#[cfg(target_os = "macos")]
+impl Drop for MacosDragGuard {
+    fn drop(&mut self) {
+        if let Some(app) = self.app.take() {
+            let _ = app.emit("kuro-native-drag", false);
+        }
+        self.dragging.store(false, Ordering::Release);
+        MACOS_NATIVE_DRAG_ACTIVE.store(false, Ordering::Release);
+    }
+}
+
+/// Native 120Hz AppKit drag loop for macOS (#59):
+/// Drives `NSWindow::setFrameOrigin:` directly from CoreGraphics cursor & left-button state
+/// (`CGEventCreate`/`CGEventGetLocation` + `CGEventSourceButtonState`, requiring zero
+/// Accessibility/Input Monitoring permissions). Bypasses `performWindowDragWithEvent:`, which
+/// silently fails when WebKit delivers `mousedown` asynchronously or when an Accessory/unfocused
+/// borderless window loses `[NSApp currentEvent]`.
+#[cfg(target_os = "macos")]
+fn run_macos_native_drag(app: AppHandle, initial_cursor_pts: Option<(f64, f64)>) -> bool {
+    let from_fallback = initial_cursor_pts.is_some();
+    if MACOS_NATIVE_DRAG_ACTIVE
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        // If JS `start_pet_drag` arrived right after the unfocused hit-test fallback already
+        // claimed this drag, wait until the active drag finishes and return `true` so JS never
+        // falls back to broken `getCurrentWindow().startDragging()`.
+        if !from_fallback {
+            while MACOS_NATIVE_DRAG_ACTIVE.load(Ordering::Acquire) {
+                std::thread::sleep(Duration::from_millis(8));
+            }
+            return true;
+        }
+        return false;
+    }
+
+    MACOS_FALLBACK_FINALIZED.store(false, Ordering::Release);
+    let (dragging_flag, paused_guard, peek_edge_state, peek_preview_state) = {
+        let state = app.state::<AppState>();
+        (
+            state.dragging.clone(),
+            state.paused_guard.clone(),
+            state.peek_edge.clone(),
+            state.peek_preview_edge.clone(),
+        )
+    };
+    dragging_flag.store(true, Ordering::Release);
+    let mut guard = MacosDragGuard {
+        dragging: dragging_flag,
+        app: None,
+    };
+
+    let Some((start_cx, start_cy)) =
+        initial_cursor_pts.or_else(input_hook::macos_hook::cursor_pos_points)
+    else {
+        return false;
+    };
+    let Some(snap) = macos_window::drag_snapshot(&app) else {
+        return false;
+    };
+    if snap.width <= 0.0 || snap.height <= 0.0 {
+        return false;
+    }
+
+    if from_fallback {
+        guard.app = Some(app.clone());
+        let _ = app.emit("kuro-native-drag", true);
+    }
+
+    // Record whether this drag is pulling the pet OUT of an existing left/right peek edge,
+    // and immediately clear `peek_edge` so we never immediately re-snap back onto that same edge.
+    let pulled_from_edge: &'static str = peek_edge_state
+        .lock()
+        .map(|mut g| {
+            let prev = match g.as_str() {
+                "left" => "left",
+                "right" => "right",
+                _ => "none",
+            };
+            *g = "none".to_string();
+            prev
+        })
+        .unwrap_or("none");
+    if pulled_from_edge != "none" {
+        let _ = app.emit("kuro-peek-edge", "none");
+    }
+    if let Ok(mut g) = peek_preview_state.lock() {
+        *g = "none".to_string();
+    }
+
+    let screen_pairs: Vec<((f64, f64, f64, f64), (f64, f64, f64, f64))> = snap
+        .screens
+        .iter()
+        .map(|s| (s.frame, s.visible_frame))
+        .collect();
+    let fallback_vis = (
+        snap.min_x,
+        snap.min_y,
+        (snap.max_x - snap.min_x + snap.width).max(320.0),
+        (snap.max_y - snap.min_y + snap.height).max(240.0),
+    );
+
+    let bounds = (snap.min_x, snap.max_x, snap.min_y, snap.max_y);
+    let mut last_x = snap.origin_x;
+    let mut last_y = snap.origin_y;
+    let mut none_streak: u8 = 0;
+    let mut candidate_edge: &'static str = "none";
+    let mut candidate_since = Instant::now();
+    let mut emitted_preview: &'static str = "none";
+    let mut suppress_edge: &'static str = pulled_from_edge;
+
+    while input_hook::macos_hook::is_left_mouse_down() {
+        if paused_guard.load(Ordering::Relaxed) {
+            break;
+        }
+        if let Some((cur_x, cur_y)) = input_hook::macos_hook::cursor_pos_points() {
+            none_streak = 0;
+            let (nx, ny) = macos_drag_target_origin(
+                (snap.origin_x, snap.origin_y),
+                (start_cx, start_cy),
+                (cur_x, cur_y),
+                bounds,
+            );
+            if (nx - last_x).abs() >= 0.5 || (ny - last_y).abs() >= 0.5 {
+                last_x = nx;
+                last_y = ny;
+                macos_window::set_window_origin(&app, nx, ny);
+            }
+
+            // Live corner-safe edge peek preview in AppKit logical points with 200ms dwell!
+            let (ak_cx, ak_cy) = macos_quartz_to_appkit_point(cur_x, cur_y, snap.primary_height);
+            let active_vis =
+                macos_active_visible_frame(&screen_pairs, ak_cx, ak_cy).unwrap_or(fallback_vis);
+            let detected_edge = detect_corner_safe_peek_edge(
+                ak_cx.round() as i32,
+                ak_cy.round() as i32,
+                last_x.round() as i32,
+                last_y.round() as i32,
+                snap.width.round() as i32,
+                snap.height.round() as i32,
+                active_vis.0.round() as i32,
+                active_vis.1.round() as i32,
+                active_vis.2.round() as i32,
+                active_vis.3.round() as i32,
+            );
+            if suppress_edge != "none" && detected_edge == "none" {
+                suppress_edge = "none";
+            }
+            let raw_edge = if suppress_edge != "none" && detected_edge == suppress_edge {
+                "none"
+            } else {
+                detected_edge
+            };
+
+            if raw_edge == "none" {
+                candidate_edge = "none";
+                if emitted_preview != "none" {
+                    emitted_preview = "none";
+                    if let Ok(mut g) = peek_preview_state.lock() {
+                        *g = "none".to_string();
+                    }
+                    let _ = app.emit("kuro-peek-preview", "none");
+                }
+            } else {
+                if raw_edge != candidate_edge {
+                    candidate_edge = raw_edge;
+                    candidate_since = Instant::now();
+                }
+                if emitted_preview != raw_edge
+                    && candidate_since.elapsed() >= Duration::from_millis(200)
+                {
+                    emitted_preview = raw_edge;
+                    if let Ok(mut g) = peek_preview_state.lock() {
+                        *g = raw_edge.to_string();
+                    }
+                    let _ = app.emit("kuro-peek-preview", raw_edge);
+                }
+            }
+        } else {
+            none_streak = none_streak.saturating_add(1);
+            if none_streak >= 10 {
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(8));
+    }
+
+    if from_fallback {
+        let _ = finalize_peek_edge_for_app(&app);
+        MACOS_FALLBACK_FINALIZED.store(true, Ordering::Release);
+    }
+    drop(guard);
+    save_window_pos(app);
+    true
+}
+
+#[tauri::command]
+fn set_dragging(state: State<'_, AppState>, dragging: bool) {
+    #[cfg(target_os = "macos")]
+    if !dragging && MACOS_NATIVE_DRAG_ACTIVE.load(Ordering::Acquire) {
+        return;
+    }
+    state.dragging.store(dragging, Ordering::Release);
+}
+
+fn clear_peek_state(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    if let Ok(mut guard) = state.peek_preview_edge.lock() {
+        *guard = "none".to_string();
+    }
+    if let Ok(mut guard) = state.peek_edge.lock() {
+        *guard = "none".to_string();
+    }
+    let _ = app.emit("kuro-peek-preview", "none");
+    let _ = app.emit("kuro-peek-edge", "none");
+}
+
+#[tauri::command]
+fn set_peek_edge(app: AppHandle, state: State<'_, AppState>, edge: String) {
+    let clean = match edge.as_str() {
+        "left" | "right" => edge,
+        _ => "none".to_string(),
+    };
+    if let Ok(mut guard) = state.peek_preview_edge.lock() {
+        *guard = "none".to_string();
+    }
+    if let Ok(mut guard) = state.peek_edge.lock() {
+        *guard = clean.clone();
+    }
+    let _ = app.emit("kuro-peek-preview", "none");
+    let _ = app.emit("kuro-peek-edge", clean);
+}
+
+/// Corner-safe screen-edge peek intent detector (left/right vertical edges only):
+/// - Parking the cat neatly in any of the 4 monitor corners (120px/pt corner safe zone) or along
+///   the top/bottom edges NEVER triggers peek.
+/// - Entering peek along the middle vertical band requires deliberately pushing the cat deep past
+///   the LEFT or RIGHT edge (>=24%) OR pinning the cursor itself flush against that outer side edge
+///   (<=8px/pt) with a mild push (>=8%).
+/// - Axis-symmetric in Y, so it works identically in Windows/Linux Y-down physical pixels and
+///   macOS AppKit Y-up logical points when all arguments share the same coordinate space.
+#[allow(clippy::too_many_arguments)]
+fn detect_corner_safe_peek_edge(
+    cursor_x: i32,
+    cursor_y: i32,
+    win_x: i32,
+    _win_y: i32,
+    win_w: i32,
+    _win_h: i32,
+    wx: i32,
+    wy: i32,
+    ww: i32,
+    wh: i32,
+) -> &'static str {
+    let wr = wx + ww;
+    let wb = wy + wh;
+
+    let left_push = wx - win_x;
+    let right_push = (win_x + win_w) - wr;
+
+    let deep_side = ((win_w as f64) * 0.24).round() as i32;
+    let mild_side = ((win_w as f64) * 0.08).round() as i32;
+
+    let cursor_at_left = cursor_x <= wx + 8;
+    let cursor_at_right = cursor_x >= wr - 8;
+
+    // 120px/pt Corner Safe Zone: any of the four monitor corners is reserved for normal parking
+    // and never triggers side-edge peek.
+    let corner_guard = 120;
+    let near_left = cursor_x - wx < corner_guard;
+    let near_right = wr - cursor_x < corner_guard;
+    let near_top = cursor_y - wy < corner_guard;
+    let near_bottom = wb - cursor_y < corner_guard;
+    let in_corner_zone = (near_left || near_right) && (near_top || near_bottom);
+
+    if in_corner_zone {
+        return "none";
+    }
+
+    if (cursor_at_left && left_push >= mild_side) || left_push >= deep_side {
+        return "left";
+    }
+    if (cursor_at_right && right_push >= mild_side) || right_push >= deep_side {
+        return "right";
+    }
+    "none"
+}
+
+/// Linux post-drag Edge-Peek detector supporting both unclamped WMs (off-edge push >=24%)
+/// and clamping X11/Wayland WMs (GNOME Mutter / KDE KWin / XFCE that clamp `win_x == wx` or
+/// `win_x + win_w == wr`): outside the 120px top/bottom corner safe zones, pinning the cursor
+/// flush against the left/right work-area edge (<=12px) with the window resting on that edge
+/// (<=8px) cleanly enters Edge-Peek.
+#[cfg(any(target_os = "linux", test))]
+#[allow(clippy::too_many_arguments)]
+fn detect_linux_edge_peek_after_drag(
+    cursor_x: i32,
+    cursor_y: i32,
+    win_x: i32,
+    win_y: i32,
+    win_w: i32,
+    win_h: i32,
+    wx: i32,
+    wy: i32,
+    ww: i32,
+    wh: i32,
+) -> &'static str {
+    let direct = detect_corner_safe_peek_edge(
+        cursor_x, cursor_y, win_x, win_y, win_w, win_h, wx, wy, ww, wh,
+    );
+    if direct != "none" {
+        return direct;
+    }
+
+    let wr = wx + ww;
+    let wb = wy + wh;
+    if cursor_y < wy + 120 || cursor_y > wb - 120 {
+        return "none";
+    }
+    if cursor_x <= wx + 12 && win_x <= wx + 8 {
+        return "left";
+    }
+    if cursor_x >= wr - 12 && win_x + win_w >= wr - 8 {
+        return "right";
+    }
+    "none"
+}
+
+/// Shared post-drag Edge-Peek finalizer:
+/// - On Windows & macOS, honors the exact live WYSIWYG preview state shown right before mouse-up
+///   and snaps flush to the active monitor's work-area edge (physical px on Windows; AppKit logical
+///   points via `macos_window::set_window_origin` on macOS — zero Retina 2x mixup).
+/// - On Linux, evaluates `detect_linux_edge_peek_after_drag` with live cursor coordinates to handle
+///   both unclamped and clamping X11/Wayland WMs cleanly.
+fn finalize_peek_edge_for_app(app: &AppHandle) -> String {
+    let state = app.state::<AppState>();
+    let previewed = state
+        .peek_preview_edge
+        .lock()
+        .map(|mut g| {
+            let v = g.clone();
+            *g = "none".to_string();
+            v
+        })
+        .unwrap_or_else(|_| "none".to_string());
+    let _ = app.emit("kuro-peek-preview", "none");
+
+    #[cfg(target_os = "macos")]
+    let detected = {
+        let detected = previewed;
+        if detected == "left" || detected == "right" {
+            if let Some(snap) = macos_window::drag_snapshot(app) {
+                let screen_pairs: Vec<((f64, f64, f64, f64), (f64, f64, f64, f64))> = snap
+                    .screens
+                    .iter()
+                    .map(|s| (s.frame, s.visible_frame))
+                    .collect();
+                let win_cx = snap.origin_x + snap.width * 0.5;
+                let win_cy = snap.origin_y + snap.height * 0.5;
+                if let Some(vis) = macos_active_visible_frame(&screen_pairs, win_cx, win_cy) {
+                    if let Some((sx, sy)) = macos_peek_snap_origin(
+                        &detected,
+                        snap.origin_y,
+                        snap.width,
+                        snap.height,
+                        vis,
+                    ) {
+                        macos_window::set_window_origin(app, sx, sy);
+                    }
+                }
+            }
+        }
+        detected
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    let detected = {
+        #[cfg_attr(windows, allow(unused_mut))]
+        let mut detected = previewed;
+        if let Some(win) = app.get_webview_window("main") {
+            #[cfg(windows)]
+            let pet_rect = if win_needs_win7_ulw() {
+                win7_layered::get_rect()
+            } else {
+                match (win.outer_position().ok(), win.outer_size().ok()) {
+                    (Some(p), Some(s)) => Some((p.x, p.y, s.width as i32, s.height as i32)),
+                    _ => None,
+                }
+            };
+            #[cfg(not(windows))]
+            let pet_rect = match (win.outer_position().ok(), win.outer_size().ok()) {
+                (Some(p), Some(s)) => Some((p.x, p.y, s.width as i32, s.height as i32)),
+                _ => None,
+            };
+
+            if let Some((pos_x, pos_y, win_w, win_h)) = pet_rect {
+                let cx = pos_x + win_w / 2;
+                let cy = pos_y + win_h / 2;
+                let sf = win.scale_factor().unwrap_or(1.0);
+                let (probe_x, probe_y) = get_cursor_pos(sf).unwrap_or((cx, cy));
+                let monitors = win.available_monitors().ok().unwrap_or_default();
+                let find_mon = |px: i32, py: i32| {
+                    monitors
+                        .iter()
+                        .find(|m| {
+                            let mp = m.position();
+                            let ms = m.size();
+                            px >= mp.x
+                                && px < mp.x + ms.width as i32
+                                && py >= mp.y
+                                && py < mp.y + ms.height as i32
+                        })
+                        .cloned()
+                };
+                let monitor = find_mon(probe_x, probe_y)
+                    .or_else(|| find_mon(cx, cy))
+                    .or_else(|| win.current_monitor().ok().flatten())
+                    .or_else(|| win.primary_monitor().ok().flatten());
+
+                if let Some(mon) = monitor {
+                    let work = mon.work_area();
+                    let (wx, wy, ww, wh) = if work.size.width > 0 && work.size.height > 0 {
+                        (
+                            work.position.x,
+                            work.position.y,
+                            work.size.width as i32,
+                            work.size.height as i32,
+                        )
+                    } else {
+                        let mp = mon.position();
+                        let ms = mon.size();
+                        (mp.x, mp.y, ms.width as i32, ms.height as i32)
+                    };
+
+                    // Linux / non-native-drag platforms evaluate post-drag edge peek here
+                    // (skip fallback if `wait_linux_drag_end` already drove WYSIWYG live preview on X11)
+                    #[cfg(target_os = "linux")]
+                    let linux_preview_ran = LINUX_LIVE_PREVIEW_RAN.swap(false, Ordering::AcqRel);
+                    #[cfg(target_os = "linux")]
+                    if detected == "none" && !linux_preview_ran {
+                        let (cur_x, cur_y) =
+                            input_hook::linux_hook::cursor_pos().unwrap_or((cx, cy));
+                        detected = detect_linux_edge_peek_after_drag(
+                            cur_x, cur_y, pos_x, pos_y, win_w, win_h, wx, wy, ww, wh,
+                        )
+                        .to_string();
+                    }
+                    #[cfg(all(not(windows), not(target_os = "linux")))]
+                    if detected == "none" {
+                        detected = detect_corner_safe_peek_edge(
+                            cx, cy, pos_x, pos_y, win_w, win_h, wx, wy, ww, wh,
+                        )
+                        .to_string();
+                    }
+
+                    let snap_pos = compute_edge_peek_snap_pos(
+                        detected.as_str(),
+                        pos_y,
+                        win_w,
+                        win_h,
+                        wx,
+                        wy,
+                        ww,
+                        wh,
+                    );
+
+                    if let Some((sx, sy)) = snap_pos {
+                        #[cfg(windows)]
+                        if win_needs_win7_ulw() {
+                            win7_layered::set_position(sx, sy);
+                            if win7_layered::is_overlay_active() {
+                                let _ = win.set_position(PhysicalPosition::new(sx, sy));
+                            }
+                        } else {
+                            let _ = win.set_position(PhysicalPosition::new(sx, sy));
+                        }
+                        #[cfg(not(windows))]
+                        {
+                            let _ = win.set_position(PhysicalPosition::new(sx, sy));
+                        }
+                    }
+                }
+            }
+        }
+        detected
+    };
+
+    if let Ok(mut guard) = state.peek_edge.lock() {
+        *guard = detected.clone();
+    }
+    let _ = app.emit("kuro-peek-edge", detected.clone());
+    detected
+}
+
+#[tauri::command]
+fn sync_peek_edge_after_drag(app: AppHandle) -> String {
+    #[cfg(target_os = "macos")]
+    if MACOS_FALLBACK_FINALIZED.swap(false, Ordering::AcqRel) {
+        return app
+            .state::<AppState>()
+            .peek_edge
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_else(|_| "none".to_string());
+    }
+    finalize_peek_edge_for_app(&app)
+}
+
+/// Native 120Hz unclamped pointer drag on Windows and macOS:
+/// - Windows: bypasses `WM_NCLBUTTONDOWN(HTCAPTION)` so Aero Snap never fights the user and
+///   transparent headspace above the cat's ears can slide cleanly above `y = 0`.
+/// - macOS: bypasses `performWindowDragWithEvent:` (broken under Accessory + unfocused borderless
+///   windows / async WebKit IPC on modern macOS, #59) via CoreGraphics + `NSWindow::setFrameOrigin:`.
+/// Returns `true` when handled natively; `false` on other platforms so the frontend falls back
+/// to Tauri's `startDragging()`.
 #[tauri::command]
 async fn start_pet_drag(app: AppHandle) -> bool {
     #[cfg(windows)]
@@ -1071,10 +1803,53 @@ async fn start_pet_drag(app: AppHandle) -> bool {
         let state = app.state::<AppState>();
         state.dragging.store(true, Ordering::Relaxed);
         let dragging_flag = state.dragging.clone();
+        // Record whether this drag is pulling the pet OUT of an existing left/right peek edge,
+        // and immediately clear `peek_edge` so we never immediately re-snap back onto that same edge.
+        let pulled_from_edge: &'static str = state
+            .peek_edge
+            .lock()
+            .map(|mut g| {
+                let prev = match g.as_str() {
+                    "left" => "left",
+                    "right" => "right",
+                    _ => "none",
+                };
+                *g = "none".to_string();
+                prev
+            })
+            .unwrap_or("none");
+        if pulled_from_edge != "none" {
+            let _ = app.emit("kuro-peek-edge", "none");
+        }
+        let peek_preview_state = state.peek_preview_edge.clone();
+        if let Ok(mut g) = peek_preview_state.lock() {
+            *g = "none".to_string();
+        }
+        let drag_app = app.clone();
+        // Snapshot (full monitor bounds, work area) pairs so live corner-safe edge preview works accurately
+        // across primary/secondary monitors even when cursor passes over the taskbar area.
+        let monitor_areas: Vec<((i32, i32, i32, i32), (i32, i32, i32, i32))> = win
+            .available_monitors()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|m| {
+                let mp = m.position();
+                let ms = m.size();
+                let w = m.work_area();
+                (
+                    (mp.x, mp.y, ms.width as i32, ms.height as i32),
+                    (w.position.x, w.position.y, w.size.width as i32, w.size.height as i32),
+                )
+            })
+            .collect();
 
         let _ = tauri::async_runtime::spawn_blocking(move || {
             let mut last_x = start_wx;
             let mut last_y = start_wy;
+            let mut candidate_edge: &'static str = "none";
+            let mut candidate_since = Instant::now();
+            let mut emitted_preview: &'static str = "none";
+            let mut suppress_edge: &'static str = pulled_from_edge;
             let hwnd = hwnd_raw as windows_sys::Win32::Foundation::HWND;
 
             loop {
@@ -1134,6 +1909,62 @@ async fn start_pet_drag(app: AppHandle) -> bool {
                             }
                         }
                     }
+
+                    // Live corner-safe edge peek preview with 200ms intentional dwell!
+                    let active_mon = monitor_areas
+                        .iter()
+                        .copied()
+                        .find(|&((mx, my, mw, mh), _)| {
+                            pt.x >= mx && pt.x < mx + mw && pt.y >= my && pt.y < my + mh
+                        })
+                        .map(|(_, work)| work)
+                        .or_else(|| monitor_areas.first().map(|(_, work)| *work))
+                        .unwrap_or((v_left, v_top, v_w, v_h));
+                    let detected_edge = detect_corner_safe_peek_edge(
+                        pt.x,
+                        pt.y,
+                        last_x,
+                        last_y,
+                        win_w,
+                        win_h,
+                        active_mon.0,
+                        active_mon.1,
+                        active_mon.2,
+                        active_mon.3,
+                    );
+                    if suppress_edge != "none" && detected_edge == "none" {
+                        suppress_edge = "none";
+                    }
+                    let raw_edge = if suppress_edge != "none" && detected_edge == suppress_edge {
+                        "none"
+                    } else {
+                        detected_edge
+                    };
+
+                    if raw_edge == "none" {
+                        candidate_edge = "none";
+                        if emitted_preview != "none" {
+                            emitted_preview = "none";
+                            if let Ok(mut g) = peek_preview_state.lock() {
+                                *g = "none".to_string();
+                            }
+                            let _ = drag_app.emit("kuro-peek-preview", "none");
+                        }
+                    } else {
+                        if raw_edge != candidate_edge {
+                            candidate_edge = raw_edge;
+                            candidate_since = Instant::now();
+                        }
+                        if emitted_preview != raw_edge
+                            && candidate_since.elapsed() >= Duration::from_millis(200)
+                        {
+                            emitted_preview = raw_edge;
+                            if let Ok(mut g) = peek_preview_state.lock() {
+                                *g = raw_edge.to_string();
+                            }
+                            let _ = drag_app.emit("kuro-peek-preview", raw_edge);
+                        }
+                    }
                 }
                 std::thread::sleep(Duration::from_millis(8));
             }
@@ -1144,10 +1975,157 @@ async fn start_pet_drag(app: AppHandle) -> bool {
         save_window_pos(app);
         true
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        tauri::async_runtime::spawn_blocking(move || run_macos_native_drag(app, None))
+            .await
+            .unwrap_or(false)
+    }
+    #[cfg(all(not(windows), not(target_os = "macos")))]
     {
         let _ = app;
         false
+    }
+}
+
+#[cfg(target_os = "linux")]
+static LINUX_LIVE_PREVIEW_RAN: AtomicBool = AtomicBool::new(false);
+
+/// On Linux, `gtk::Window::begin_move_drag` (`startDragging()`) returns immediately (~1ms)
+/// before the user actually releases the mouse button. This command blocks until X11 `Button1Mask`
+/// is released while running the same `pulled_from_edge` suppression + 200ms dwell live
+/// `kuro-peek-preview` loop used on Windows and macOS. Returns `false` on pure Wayland without X11
+/// so the frontend can fall back to awaiting `mouseUp`.
+#[tauri::command]
+async fn wait_linux_drag_end(app: AppHandle) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let state = app.state::<AppState>();
+        let pulled_from_edge: String = state
+            .peek_edge
+            .lock()
+            .map(|mut g| {
+                let prev = g.clone();
+                *g = "none".to_string();
+                prev
+            })
+            .unwrap_or_else(|_| "none".to_string());
+        if pulled_from_edge != "none" {
+            let _ = app.emit("kuro-peek-edge", "none");
+        }
+        let peek_preview_state = state.peek_preview_edge.clone();
+        if let Ok(mut g) = peek_preview_state.lock() {
+            *g = "none".to_string();
+        }
+        if input_hook::linux_hook::query_pointer_state().is_none() {
+            LINUX_LIVE_PREVIEW_RAN.store(false, Ordering::Release);
+            return false;
+        }
+        LINUX_LIVE_PREVIEW_RAN.store(true, Ordering::Release);
+
+        let drag_app = app.clone();
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            let started = Instant::now();
+            let mut suppress_edge: Option<String> =
+                if pulled_from_edge == "left" || pulled_from_edge == "right" {
+                    Some(pulled_from_edge)
+                } else {
+                    None
+                };
+            let mut candidate_edge: &'static str = "none";
+            let mut candidate_since = Instant::now();
+            let mut emitted_preview: &'static str = "none";
+
+            // Brief grace window so a tap-fast click-drag doesn't exit before X11 reflects Button1Mask
+            while started.elapsed() < Duration::from_secs(60) {
+                let Some((cur_x, cur_y, left_down)) = input_hook::linux_hook::query_pointer_state()
+                else {
+                    break;
+                };
+                if !left_down {
+                    break;
+                }
+                if let Some(win) = drag_app.get_webview_window("main") {
+                    if let (Ok(pos), Ok(sz)) = (win.outer_position(), win.outer_size()) {
+                        let win_w = sz.width as i32;
+                        let win_h = sz.height as i32;
+                        let monitor = win
+                            .available_monitors()
+                            .ok()
+                            .and_then(|mons| {
+                                mons.into_iter().find(|m| {
+                                    let mp = m.position();
+                                    let ms = m.size();
+                                    cur_x >= mp.x
+                                        && cur_x <= mp.x + ms.width as i32
+                                        && cur_y >= mp.y
+                                        && cur_y <= mp.y + ms.height as i32
+                                })
+                            })
+                            .or_else(|| win.current_monitor().ok().flatten())
+                            .or_else(|| win.primary_monitor().ok().flatten());
+                        if let Some(mon) = monitor {
+                            let work = mon.work_area();
+                            let (wx, wy, ww, wh) = if work.size.width > 0 && work.size.height > 0 {
+                                (
+                                    work.position.x,
+                                    work.position.y,
+                                    work.size.width as i32,
+                                    work.size.height as i32,
+                                )
+                            } else {
+                                let mp = mon.position();
+                                let ms = mon.size();
+                                (mp.x, mp.y, ms.width as i32, ms.height as i32)
+                            };
+                            let detected_edge = detect_linux_edge_peek_after_drag(
+                                cur_x, cur_y, pos.x, pos.y, win_w, win_h, wx, wy, ww, wh,
+                            );
+                            if detected_edge == "none" {
+                                suppress_edge = None;
+                            }
+                            let raw_edge = if suppress_edge.as_deref() == Some(detected_edge) {
+                                "none"
+                            } else {
+                                detected_edge
+                            };
+                            if raw_edge == "none" {
+                                candidate_edge = "none";
+                                if emitted_preview != "none" {
+                                    emitted_preview = "none";
+                                    if let Ok(mut g) = peek_preview_state.lock() {
+                                        *g = "none".to_string();
+                                    }
+                                    let _ = drag_app.emit("kuro-peek-preview", "none");
+                                }
+                            } else {
+                                if raw_edge != candidate_edge {
+                                    candidate_edge = raw_edge;
+                                    candidate_since = Instant::now();
+                                }
+                                if emitted_preview != raw_edge
+                                    && candidate_since.elapsed() >= Duration::from_millis(200)
+                                {
+                                    emitted_preview = raw_edge;
+                                    if let Ok(mut g) = peek_preview_state.lock() {
+                                        *g = raw_edge.to_string();
+                                    }
+                                    let _ = drag_app.emit("kuro-peek-preview", raw_edge);
+                                }
+                            }
+                        }
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(16));
+            }
+        })
+        .await;
+        true
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = app;
+        true
     }
 }
 
@@ -1183,6 +2161,16 @@ async fn install_update(app: AppHandle, info: updater::UpdateInfo) -> Result<(),
 #[tauri::command]
 fn open_release_page(url: String) {
     updater::open_url_in_browser(&url);
+}
+
+#[tauri::command]
+fn restart_as_admin(app: AppHandle) {
+    #[cfg(windows)]
+    if !win_is_elevated() {
+        win_restart_as_admin(app);
+    }
+    #[cfg(not(windows))]
+    let _ = app;
 }
 
 #[tauri::command]
@@ -1434,6 +2422,7 @@ pub fn apply_tail_key_mode_and_save(app: &AppHandle, mode: &str) {
 
 #[cfg(target_os = "macos")]
 pub fn reset_window_position(app: &AppHandle) {
+    clear_peek_state(app);
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
         let Some(win) = handle.get_webview_window("main") else {
@@ -1453,6 +2442,7 @@ pub fn reset_window_position(app: &AppHandle) {
 
 #[cfg(not(target_os = "macos"))]
 pub fn reset_window_position(app: &AppHandle) {
+    clear_peek_state(app);
     if let Some(win) = app.get_webview_window("main") {
         #[cfg(windows)]
         if windows_display::reset_position(app, &win) {
@@ -1901,7 +2891,20 @@ fn win_wait_for_previous_pid_if_requested() -> bool {
     waited
 }
 
-fn is_over_interactive_silhouette(rx: f64, ry: f64, is_108: bool) -> (bool, bool) {
+fn is_over_interactive_silhouette(rx: f64, ry: f64, is_108: bool, peek_edge: &str) -> (bool, bool) {
+    if peek_edge == "left" {
+        let dx = (rx - 0.16) / 0.28;
+        let dy = (ry - 0.50) / 0.34;
+        let over_head = (dx * dx + dy * dy) <= 1.0;
+        return (over_head, over_head);
+    }
+    if peek_edge == "right" {
+        let dx = (rx - 0.84) / 0.28;
+        let dy = (ry - 0.50) / 0.34;
+        let over_head = (dx * dx + dy * dy) <= 1.0;
+        return (over_head, over_head);
+    }
+
     // Cat body/head oval centered around (0.48, 0.49) for 65% or (0.51, 0.48) for 108-key
     let (cat_cx, cat_rx) = if is_108 { (0.51, 0.21) } else { (0.48, 0.25) };
     let dx_cat = (rx - cat_cx) / cat_rx;
@@ -1915,14 +2918,20 @@ fn is_over_interactive_silhouette(rx: f64, ry: f64, is_108: bool) -> (bool, bool
     let over_head_top = (0.29 + x_shift..=0.73 + x_shift).contains(&rx)
         && (0.13..=0.30).contains(&ry);
 
-    // 甩到身侧的尾巴：实测在 x 0.62~0.80、y 0.44~0.62，椭圆只覆盖到 0.72，会漏掉尾尖。
+    // 尾巴：本地实测摆动范围 x 0.62~0.80 / y 0.44~0.62，用椭圆覆盖；
+    // 同时并入上游 v5.1.3 的矩形判据，扩大尾部可点范围。
     let dx_tail = (rx - (0.72 + x_shift)) / 0.14;
     let dy_tail = (ry - 0.53) / 0.11;
-    let over_tail = (dx_tail * dx_tail + dy_tail * dy_tail) <= 1.0;
+    let over_tail_ellipse = (dx_tail * dx_tail + dy_tail * dy_tail) <= 1.0;
+    let over_tail_rect = if is_108 {
+        rx >= 0.64 && rx <= 0.85 && ry >= 0.48 && ry <= 0.72
+    } else {
+        rx >= 0.64 && rx <= 0.90 && ry >= 0.48 && ry <= 0.72
+    };
+    let over_tail = over_tail_ellipse || over_tail_rect;
 
     // 伸出去的爪子：左爪常抬起敲键盘，会从身体左侧探出一段（实测 x 0.10~0.21, y 0.67~0.79）。
     let over_paw = (ry >= 0.56 && ry <= 0.82) && (rx >= 0.04 + x_shift && rx <= 0.34 + x_shift);
-
     // Keyboard & mouse lower area
     let over_desk = if is_108 {
         rx >= 0.04 && rx <= 0.94 && ry >= 0.65 && ry <= 0.94
@@ -2007,6 +3016,7 @@ fn start_hit_test_loop(
     let tail_picker_bounds = app.state::<AppState>().tail_picker_bounds.clone();
     let pet_mask = app.state::<AppState>().pet_mask.clone();
     let hit_diag = app.state::<AppState>().hit_diag.clone();
+    let peek_edge_state = app.state::<AppState>().peek_edge.clone();
     std::thread::spawn(move || {
         let mut last_ignore: Option<bool> = None;
         let mut last_cursor: (i32, i32) = (i32::MIN, i32::MIN);
@@ -2036,15 +3046,29 @@ fn start_hit_test_loop(
         let mut fg_above_attempts: u8 = 0;
         #[cfg(windows)]
         let mut last_topmost_reassert = Instant::now() - Duration::from_secs(5);
+        #[cfg(target_os = "macos")]
+        let mut mac_lbtn_was_down = false;
+        #[cfg(target_os = "macos")]
+        let mut mac_press_start: Option<(f64, f64)> = None;
 
         loop {
             std::thread::sleep(Duration::from_millis(sleep_ms));
 
             if paused_guard.load(Ordering::Relaxed) {
+                #[cfg(target_os = "macos")]
+                {
+                    mac_press_start = None;
+                    mac_lbtn_was_down = true;
+                }
                 sleep_ms = 120;
                 continue;
             }
             let Some(win) = app.get_webview_window("main") else {
+                #[cfg(target_os = "macos")]
+                {
+                    mac_press_start = None;
+                    mac_lbtn_was_down = true;
+                }
                 sleep_ms = 120;
                 continue;
             };
@@ -2060,6 +3084,11 @@ fn start_hit_test_loop(
                     continue;
                 }
             } else if !win.is_visible().unwrap_or(false) {
+                #[cfg(target_os = "macos")]
+                {
+                    mac_press_start = None;
+                    mac_lbtn_was_down = true;
+                }
                 sleep_ms = 120;
                 continue;
             }
@@ -2103,9 +3132,15 @@ fn start_hit_test_loop(
                 )
             };
             let layout_str = if is_108 { "108" } else { "65" };
+            #[cfg(not(windows))]
+            let _ = always_on_top;
 
             let is_menu = menu_open.load(Ordering::Relaxed);
             let picker_bounds = *tail_picker_bounds.lock().unwrap();
+            #[cfg(target_os = "macos")]
+            let is_drag =
+                dragging.load(Ordering::Acquire) || MACOS_NATIVE_DRAG_ACTIVE.load(Ordering::Acquire);
+            #[cfg(not(target_os = "macos"))]
             let is_drag = dragging.load(Ordering::Relaxed);
             let is_banner = update_banner_open.load(Ordering::Relaxed);
 
@@ -2217,8 +3252,18 @@ fn start_hit_test_loop(
             let pet_ry = (ry - pet_y0) / pet_h_frac;
             let inside_pet = pet_rx >= 0.0 && pet_rx <= 1.0 && pet_ry >= 0.0 && pet_ry <= 1.0;
 
-            let geometry = if inside_pet {
-                is_over_interactive_silhouette(pet_rx, pet_ry, is_108)
+            let cur_peek = peek_edge_state
+                .lock()
+                .map(|g| g.clone())
+                .unwrap_or_else(|_| "none".to_string());
+            let geometry = if cur_peek == "left" || cur_peek == "right" {
+                if inside {
+                    is_over_interactive_silhouette(rx, ry, is_108, &cur_peek)
+                } else {
+                    (false, false)
+                }
+            } else if inside_pet {
+                is_over_interactive_silhouette(pet_rx, pet_ry, is_108, &cur_peek)
             } else {
                 (false, false)
             };
@@ -2357,6 +3402,47 @@ fn start_hit_test_loop(
                 }
             }
 
+            // macOS unfocused first-click drag fallback (#59):
+            // Under ActivationPolicy::Accessory + focus:false, WKWebView may swallow or delay the
+            // first left-mouse press when another app is active (`acceptsFirstMouse`). Detect a
+            // left-button drag gesture >= 4pt over the interactive pet silhouette directly via
+            // CoreGraphics and launch the native drag loop without waiting on WebKit.
+            #[cfg(target_os = "macos")]
+            {
+                let lbtn = input_hook::macos_hook::is_left_mouse_down();
+                if is_drag || effective_locked || is_menu || is_banner || picker_bounds.is_some() {
+                    mac_press_start = None;
+                } else if !mac_lbtn_was_down && lbtn {
+                    mac_press_start = if over_interactive {
+                        input_hook::macos_hook::cursor_pos_points()
+                    } else {
+                        None
+                    };
+                } else if lbtn {
+                    if let Some((px, py)) = mac_press_start {
+                        if !dragging.load(Ordering::Acquire)
+                            && !MACOS_NATIVE_DRAG_ACTIVE.load(Ordering::Acquire)
+                        {
+                            if let Some((cur_x, cur_y)) = input_hook::macos_hook::cursor_pos_points()
+                            {
+                                if (cur_x - px).hypot(cur_y - py) >= 4.0 {
+                                    mac_press_start = None;
+                                    let app_for_drag = app.clone();
+                                    std::thread::spawn(move || {
+                                        let _ = run_macos_native_drag(app_for_drag, Some((px, py)));
+                                    });
+                                }
+                            }
+                        } else {
+                            mac_press_start = None;
+                        }
+                    }
+                } else {
+                    mac_press_start = None;
+                }
+                mac_lbtn_was_down = lbtn;
+            }
+
             let state_changed = over_cat != last_over_cat
                 || inside_pet != last_inside_pet
                 || alt_override != last_alt_override
@@ -2394,7 +3480,18 @@ fn start_hit_test_loop(
 
             // Adaptive polling interval: fast 25ms near/over pet window, low-overhead 50-65ms elsewhere!
             let near_window = rx >= -0.15 && rx <= 1.15 && ry >= -0.15 && ry <= 1.15;
-            sleep_ms = if near_window || is_drag || is_menu || picker_bounds.is_some() || alt_override {
+            #[cfg(target_os = "macos")]
+            let mac_drag_armed = mac_press_start.is_some();
+            #[cfg(not(target_os = "macos"))]
+            let mac_drag_armed = false;
+            sleep_ms = if mac_drag_armed {
+                12
+            } else if near_window
+                || is_drag
+                || is_menu
+                || picker_bounds.is_some()
+                || alt_override
+            {
                 25
             } else if game_now {
                 65
@@ -2890,22 +3987,266 @@ pub(crate) fn release_single_instance_lock() {
     }
 }
 
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LinuxWebkitEnvPlan {
+    force_shm: bool,
+    disable_dmabuf: bool,
+    disable_nv_explicit_sync: bool,
+    prefer_x11: bool,
+}
+
+/// Decides Linux WebKitGTK & GDK environment defaults before GTK/WebKit initializes.
+///
+/// Historically setting `WEBKIT_DISABLE_DMABUF_RENDERER=1` unconditionally prevented crashes
+/// on NVIDIA/VMs/KylinOS, but on WebKitGTK 2.44+ (including Ubuntu 22.04 LTS security updates
+/// 2.46–2.54) it forces transparent overlay windows onto the legacy non-DMABUF backing store,
+/// causing persistent animation ghosting/trails (Issue #56, tauri#14924) and blanking/crashes
+/// on 2.54+. Instead:
+/// - Explicit user/packager env overrides always win.
+/// - Healthy Mesa hardware GPUs (Intel/AMD/etc.) keep native DMA-BUF compositing (clean RGBA swap).
+/// - NVIDIA / VMs / KylinOS / software GL use `WEBKIT_DMABUF_RENDERER_FORCE_SHM=1` on WebKitGTK
+///   >= 2.44 (preserving the modern full-frame swap chain while bypassing hardware DMA-BUF/GBM
+///   imports), falling back to `WEBKIT_DISABLE_DMABUF_RENDERER=1` only on WebKitGTK < 2.44.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[allow(clippy::too_many_arguments)]
+fn select_linux_webkit_env(
+    webkit_ver: Option<(u32, u32, u32)>,
+    has_explicit_webkit_override: bool,
+    has_nv_explicit_sync_override: bool,
+    nvidia_driver: bool,
+    kylin_or_software_gl: bool,
+    has_wayland_display: bool,
+    has_x11_display: bool,
+    has_gdk_backend_override: bool,
+    has_kurocat_wayland_override: bool,
+) -> LinuxWebkitEnvPlan {
+    let needs_shm_fallback = nvidia_driver || kylin_or_software_gl;
+    let supports_force_shm = webkit_ver.map_or(true, |(maj, min, _)| (maj, min) >= (2, 44));
+
+    let (force_shm, disable_dmabuf) = if has_explicit_webkit_override || !needs_shm_fallback {
+        (false, false)
+    } else if supports_force_shm {
+        (true, false)
+    } else {
+        (false, true)
+    };
+
+    let disable_nv_explicit_sync = nvidia_driver && !has_nv_explicit_sync_override;
+    let prefer_x11 = has_wayland_display
+        && has_x11_display
+        && !has_gdk_backend_override
+        && !has_kurocat_wayland_override;
+
+    LinuxWebkitEnvPlan {
+        force_shm,
+        disable_dmabuf,
+        disable_nv_explicit_sync,
+        prefer_x11,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn probe_linux_webkitgtk_version() -> Option<(u32, u32, u32)> {
+    use std::ffi::{c_char, c_int, c_void};
+
+    const RTLD_LAZY: c_int = 0x00001;
+    const RTLD_NOLOAD: c_int = 0x00004;
+    extern "C" {
+        fn dlopen(filename: *const c_char, flag: c_int) -> *mut c_void;
+        fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
+    }
+
+    type VersionFn = unsafe extern "C" fn() -> u32;
+
+    unsafe {
+        // Check already-linked symbols first (RTLD_DEFAULT = NULL on glibc), and only
+        // fall back to libwebkit2gtk-4.1.so.0 (NEVER dlopen libwebkit2gtk-4.0.so.37,
+        // which pulls in libsoup2 alongside wry's libsoup3 and aborts with SIGTRAP!).
+        let try_handle = |h: *mut c_void| -> Option<(u32, u32, u32)> {
+            let maj_sym = dlsym(h, b"webkit_get_major_version\0".as_ptr() as *const c_char);
+            let min_sym = dlsym(h, b"webkit_get_minor_version\0".as_ptr() as *const c_char);
+            let mic_sym = dlsym(h, b"webkit_get_micro_version\0".as_ptr() as *const c_char);
+            if !maj_sym.is_null() && !min_sym.is_null() && !mic_sym.is_null() {
+                let maj: VersionFn = std::mem::transmute(maj_sym);
+                let min: VersionFn = std::mem::transmute(min_sym);
+                let mic: VersionFn = std::mem::transmute(mic_sym);
+                let v = (maj(), min(), mic());
+                if v.0 > 0 {
+                    return Some(v);
+                }
+            }
+            None
+        };
+
+        if let Some(v) = try_handle(std::ptr::null_mut()) {
+            return Some(v);
+        }
+        let h_noload = dlopen(
+            b"libwebkit2gtk-4.1.so.0\0".as_ptr() as *const c_char,
+            RTLD_LAZY | RTLD_NOLOAD,
+        );
+        if !h_noload.is_null() {
+            if let Some(v) = try_handle(h_noload) {
+                return Some(v);
+            }
+        }
+        let h_41 = dlopen(
+            b"libwebkit2gtk-4.1.so.0\0".as_ptr() as *const c_char,
+            RTLD_LAZY,
+        );
+        if !h_41.is_null() {
+            if let Some(v) = try_handle(h_41) {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn probe_linux_nvidia_driver() -> bool {
+    use std::path::Path;
+    if Path::new("/proc/driver/nvidia/version").exists()
+        || Path::new("/sys/module/nvidia").exists()
+        || Path::new("/sys/module/nvidia_drm").exists()
+    {
+        return true;
+    }
+    let Ok(entries) = std::fs::read_dir("/sys/class/drm") else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with("card") || name.contains('-') {
+            return false;
+        }
+        let device = entry.path().join("device");
+        let vendor = std::fs::read_to_string(device.join("vendor")).unwrap_or_default();
+        let driver = std::fs::read_link(device.join("driver")).ok();
+        vendor.trim().eq_ignore_ascii_case("0x10de")
+            && driver
+                .as_deref()
+                .and_then(Path::file_name)
+                .is_some_and(|d| d == "nvidia")
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn probe_linux_kylin_or_software_gl() -> bool {
+    use std::path::Path;
+    if Path::new("/etc/kylin-release").exists() {
+        return true;
+    }
+    if std::env::var("LIBGL_ALWAYS_SOFTWARE")
+        .map(|v| !v.is_empty() && v != "0")
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    const HW_MESA_DRIVERS: &[&str] = &[
+        "amdgpu", "asahi", "etnaviv", "i915", "lima", "msm", "nouveau", "panfrost", "panthor",
+        "radeon", "v3d", "xe",
+    ];
+    let has_hw_mesa = std::fs::read_dir("/sys/class/drm")
+        .ok()
+        .map(|entries| {
+            entries.flatten().any(|entry| {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if !name.starts_with("card") || name.contains('-') {
+                    return false;
+                }
+                std::fs::read_link(entry.path().join("device/driver"))
+                    .ok()
+                    .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
+                    .is_some_and(|drv| HW_MESA_DRIVERS.iter().any(|&hw| hw == drv))
+            })
+        })
+        .unwrap_or(false);
+
+    if has_hw_mesa {
+        return false;
+    }
+
+    // No hardware Mesa GPU detected: check common VM DMI markers (VMware/VirtualBox/QEMU/KVM/etc.)
+    for dmi_path in [
+        "/sys/class/dmi/id/product_name",
+        "/sys/class/dmi/id/sys_vendor",
+    ] {
+        if let Ok(text) = std::fs::read_to_string(dmi_path) {
+            let lower = text.to_ascii_lowercase();
+            if ["vmware", "virtualbox", "qemu", "kvm", "parallels", "bochs", "hyper-v"]
+                .iter()
+                .any(|vm| lower.contains(vm))
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 #[cfg(target_os = "linux")]
 fn linux_configure_display_env() {
-    // Prevent WebKitGTK 4.1 DMABUF blank/black transparent window issues on KylinOS/Mesa/NVIDIA/VMs
-    // while keeping RGBA compositing transparency intact.
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+    let webkit_ver = probe_linux_webkitgtk_version();
+    let has_explicit_webkit_override = [
+        "WEBKIT_DISABLE_DMABUF_RENDERER",
+        "WEBKIT_DMABUF_RENDERER_FORCE_SHM",
+        "WEBKIT_FORCE_DMABUF_RENDERER",
+        "WEBKIT_DISABLE_COMPOSITING_MODE",
+    ]
+    .iter()
+    .any(|k| std::env::var_os(k).is_some());
+
+    let has_nv_explicit_sync_override = std::env::var_os("__NV_DISABLE_EXPLICIT_SYNC").is_some();
+    let nvidia_driver = probe_linux_nvidia_driver();
+    let kylin_or_software_gl = probe_linux_kylin_or_software_gl();
+    let has_wayland_display = std::env::var_os("WAYLAND_DISPLAY").is_some();
+    let has_x11_display = std::env::var("DISPLAY")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
+    let has_gdk_backend_override = std::env::var_os("GDK_BACKEND").is_some();
+    let has_kurocat_wayland_override = std::env::var_os("KUROCAT_WAYLAND").is_some();
+
+    let plan = select_linux_webkit_env(
+        webkit_ver,
+        has_explicit_webkit_override,
+        has_nv_explicit_sync_override,
+        nvidia_driver,
+        kylin_or_software_gl,
+        has_wayland_display,
+        has_x11_display,
+        has_gdk_backend_override,
+        has_kurocat_wayland_override,
+    );
+
+    if plan.force_shm {
+        std::env::set_var("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1");
+    }
+    if plan.disable_dmabuf {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
-    // Prefer X11/XWayland when DISPLAY is available so bottom-right window placement,
-    // XShape click-through, and zero-root XRecord global input work reliably across desktop environments.
-    if std::env::var_os("WAYLAND_DISPLAY").is_some()
-        && std::env::var_os("DISPLAY").map(|v| !v.is_empty()).unwrap_or(false)
-        && std::env::var_os("GDK_BACKEND").is_none()
-        && std::env::var_os("KUROCAT_WAYLAND").is_none()
-    {
+    if plan.disable_nv_explicit_sync {
+        std::env::set_var("__NV_DISABLE_EXPLICIT_SYNC", "1");
+    }
+    if plan.prefer_x11 {
+        // Prefer X11/XWayland when DISPLAY is available so bottom-right window placement,
+        // XShape click-through, and zero-root XRecord global input work reliably across desktop environments.
         std::env::set_var("GDK_BACKEND", "x11");
     }
+
+    eprintln!(
+        "[kurocat] linux display: webkit={:?} nvidia={} kylin_or_vm={} force_shm={} disable_dmabuf={} nv_no_sync={} prefer_x11={}",
+        webkit_ver,
+        nvidia_driver,
+        kylin_or_software_gl,
+        plan.force_shm,
+        plan.disable_dmabuf,
+        plan.disable_nv_explicit_sync,
+        plan.prefer_x11
+    );
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -2971,6 +4312,8 @@ pub fn run() {
             paused_guard,
             pet_mask: Arc::new(Mutex::new(None)),
             hit_diag: Arc::new(Mutex::new(HitDiag::default())),
+            peek_edge: Arc::new(Mutex::new("none".to_string())),
+            peek_preview_edge: Arc::new(Mutex::new("none".to_string())),
         })
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -2982,13 +4325,6 @@ pub fn run() {
             }
 
             if let Some(win) = app.get_webview_window("main") {
-                #[cfg(target_os = "linux")]
-                {
-                    // On X11, `resizable: false` in tauri.conf.json sets fixed min==max WM size hints,
-                    // causing programmatic `set_size()` calls (e.g. scale < 100%) to be silently ignored (#56).
-                    // Because the window is borderless/undecorated, enabling resizable on Linux adds no frame.
-                    let _ = win.set_resizable(true);
-                }
                 let (win_w, win_h) = window_dimensions(&s.keyboard_layout, s.scale);
                 let _ = win.set_size(Size::Logical(LogicalSize::new(win_w, win_h)));
                 #[cfg(not(target_os = "macos"))]
@@ -3175,6 +4511,7 @@ pub fn run() {
             trim_idle_memory,
             get_cats,
             get_game_active,
+            restart_as_admin,
             get_mcp_config,
             get_agent_hooks_config,
             get_obs_url,
@@ -3188,7 +4525,10 @@ pub fn run() {
             set_tail_picker_bounds,
             save_tail_picker_selection,
             set_dragging,
+            set_peek_edge,
+            sync_peek_edge_after_drag,
             start_pet_drag,
+            wait_linux_drag_end,
             set_update_banner_open,
             set_pet_mask,
             get_hit_diag,
@@ -3381,16 +4721,279 @@ mod side_menu_layout_tests {
     }
 
     #[test]
+    fn places_scheme_a_298px_side_menu_with_zero_overlap() {
+        assert!((super::SIDE_MENU_LOGICAL_W - 298.0).abs() < 1e-6);
+        let pet = (1580, 620, 315, 410);
+        let work = (0, 0, 1920, 1040);
+        let menu = (298, 568);
+        let (mx, my) = compute_side_menu_pos(pet, work, menu, 10, 10);
+        assert_eq!(mx, 1580 - 298 - 10);
+        assert!(mx + menu.0 <= pet.0);
+        assert_eq!(my, 620 + 410 - 568);
+    }
+
+    #[test]
     fn drag_clamp_allows_cat_ears_to_reach_top_of_screen_without_losing_window() {
         // 1920x1080 virtual desktop, 420x440 window: transparent top headroom (~75px) may go above y=0
         let (x, y) = super::clamp_pet_drag_position(500, -140, 420, 440, 0, 0, 1920, 1080);
         assert_eq!(x, 500);
         assert_eq!(y, -75, "cat window should smoothly slide up by ~17% headroom so ears touch y=0");
 
-        // Trying to drag way off-screen left/right/bottom keeps pet safely reachable
+        // Trying to drag way off-screen left/right/bottom allows intentional deep peek push (>=24%)
+        // while keeping >=72% of the pet window safely reachable on-screen.
         let (lx, by) = super::clamp_pet_drag_position(-500, 2000, 420, 440, 0, 0, 1920, 1080);
-        assert_eq!(lx, -42);
-        assert!(by <= 1080 - 290 && by >= 700, "pet body stays safely visible at bottom edge");
+        assert_eq!(lx, -118);
+        let (rx, _) = super::clamp_pet_drag_position(4000, 300, 420, 440, 0, 0, 1920, 1080);
+        assert_eq!(rx, 1920 - 420 + 118);
+        assert!(by <= 1080 - 240 && by >= 700, "pet body stays safely visible at bottom edge");
+    }
+
+    #[test]
+    fn peek_silhouette_hitbox_covers_head_and_gripping_hands_on_both_edges() {
+        // Left peek: head & gripping hands near left edge are interactive; far right is click-through
+        assert_eq!(super::is_over_interactive_silhouette(0.05, 0.50, false, "left"), (true, true));
+        assert_eq!(super::is_over_interactive_silhouette(0.35, 0.50, false, "left"), (true, true));
+        assert_eq!(super::is_over_interactive_silhouette(0.16, 0.25, false, "left"), (true, true));
+        assert_eq!(super::is_over_interactive_silhouette(0.80, 0.50, false, "left"), (false, false));
+
+        // Right peek: head & gripping hands near right edge are interactive; far left is click-through
+        assert_eq!(super::is_over_interactive_silhouette(0.95, 0.50, false, "right"), (true, true));
+        assert_eq!(super::is_over_interactive_silhouette(0.65, 0.50, false, "right"), (true, true));
+        assert_eq!(super::is_over_interactive_silhouette(0.84, 0.75, false, "right"), (true, true));
+        assert_eq!(super::is_over_interactive_silhouette(0.20, 0.50, false, "right"), (false, false));
+
+        // Normal stance: tail hitbox is interactive so users can poke the tail without click-through
+        assert_eq!(super::is_over_interactive_silhouette(0.80, 0.58, false, "none"), (true, false));
+    }
+
+    #[test]
+    fn corner_safe_peek_detection_guards_all_four_corners_and_triggers_on_mid_edge() {
+        // 1920x1040 work area, 420x440 pet window (deep_side = 101px, mild_side = 34px)
+        let (wx, wy, ww, wh) = (0, 0, 1920, 1040);
+        let (win_w, win_h) = (420, 440);
+
+        // All four 120px corner safe zones NEVER trigger — even with deep push OR cursor pinned in corner!
+        assert_eq!(super::detect_corner_safe_peek_edge(1860, 980, 1618, 600, win_w, win_h, wx, wy, ww, wh), "none");
+        assert_eq!(super::detect_corner_safe_peek_edge(1918, 1035, 1618, 600, win_w, win_h, wx, wy, ww, wh), "none");
+        assert_eq!(super::detect_corner_safe_peek_edge(1860, 60, 1618, 0, win_w, win_h, wx, wy, ww, wh), "none");
+        assert_eq!(super::detect_corner_safe_peek_edge(1918, 5, 1618, 0, win_w, win_h, wx, wy, ww, wh), "none");
+        assert_eq!(super::detect_corner_safe_peek_edge(60, 980, -118, 600, win_w, win_h, wx, wy, ww, wh), "none");
+        assert_eq!(super::detect_corner_safe_peek_edge(2, 1035, -118, 600, win_w, win_h, wx, wy, ww, wh), "none");
+        assert_eq!(super::detect_corner_safe_peek_edge(60, 60, -118, 0, win_w, win_h, wx, wy, ww, wh), "none");
+        assert_eq!(super::detect_corner_safe_peek_edge(2, 5, -118, 0, win_w, win_h, wx, wy, ww, wh), "none");
+
+        // Mid-edge deep push (>= 24% = 101px) triggers left/right cleanly
+        assert_eq!(super::detect_corner_safe_peek_edge(90, 500, -105, 300, win_w, win_h, wx, wy, ww, wh), "left");
+        assert_eq!(super::detect_corner_safe_peek_edge(1820, 500, 1605, 300, win_w, win_h, wx, wy, ww, wh), "right");
+
+        // Mid-edge cursor pinned (<= 8px) with mild push (>= 8% = 34px) triggers left/right cleanly
+        assert_eq!(super::detect_corner_safe_peek_edge(6, 500, -40, 300, win_w, win_h, wx, wy, ww, wh), "left");
+        assert_eq!(super::detect_corner_safe_peek_edge(1914, 500, 1540, 300, win_w, win_h, wx, wy, ww, wh), "right");
+
+        // Mild push WITHOUT cursor pin does NOT trigger
+        assert_eq!(super::detect_corner_safe_peek_edge(90, 500, -40, 300, win_w, win_h, wx, wy, ww, wh), "none");
+        assert_eq!(super::detect_corner_safe_peek_edge(1820, 500, 1540, 300, win_w, win_h, wx, wy, ww, wh), "none");
+
+        // Top / bottom mid-edges NEVER trigger (left/right vertical edges only)
+        assert_eq!(super::detect_corner_safe_peek_edge(960, 2, 750, -75, win_w, win_h, wx, wy, ww, wh), "none");
+        assert_eq!(super::detect_corner_safe_peek_edge(960, 1038, 750, 700, win_w, win_h, wx, wy, ww, wh), "none");
+    }
+
+    #[test]
+    fn macos_drag_delta_converts_quartz_y_down_to_appkit_y_up_with_clamping() {
+        // Single M3 MacBook Retina logical display: 1512x982 pts, AppKit origin (0, 0)
+        let union = super::macos_screens_union(&[(0.0, 0.0, 1512.0, 982.0)]).unwrap();
+        assert_eq!(union, (0.0, 0.0, 1512.0, 982.0));
+
+        let bounds = super::macos_drag_bounds(420.0, 440.0, union.0, union.1, union.2, union.3);
+        // side_margin = round(420 * 0.28) = 118, top_headroom = 75, min_visible_h = 299
+        assert_eq!(bounds, (-118.0, 1210.0, -141.0, 617.0));
+
+        // Dragging right +100pt and UP -120pt in Quartz Y-down must move AppKit origin (+100, +120)
+        let (nx, ny) =
+            super::macos_drag_target_origin((500.0, 200.0), (600.0, 500.0), (700.0, 380.0), bounds);
+        assert_eq!((nx, ny), (600.0, 320.0));
+
+        // Dragging far UP lets ~17% transparent headspace slide past top bezel (982 - 440 + 75 = 617)
+        let (tx, ty) =
+            super::macos_drag_target_origin((500.0, 200.0), (600.0, 500.0), (600.0, -400.0), bounds);
+        assert_eq!((tx, ty), (500.0, 617.0));
+
+        // Dragging far DOWN keeps >=68% visible above bottom edge (0 + 299 - 440 = -141)
+        let (bx, by) =
+            super::macos_drag_target_origin((500.0, 200.0), (600.0, 500.0), (600.0, 1800.0), bounds);
+        assert_eq!((bx, by), (500.0, -141.0));
+
+        // Dragging far LEFT / RIGHT clamps to 28% side margins (enough for >=24% Edge-Peek push!)
+        let (lx, _) =
+            super::macos_drag_target_origin((500.0, 200.0), (600.0, 500.0), (-900.0, 500.0), bounds);
+        let (rx, _) =
+            super::macos_drag_target_origin((500.0, 200.0), (600.0, 500.0), (2900.0, 500.0), bounds);
+        assert_eq!(lx, -118.0);
+        assert_eq!(rx, 1210.0);
+    }
+
+    #[test]
+    fn macos_drag_spans_multi_monitor_union_across_negative_external_display() {
+        // External monitor to the left at (-2304, 120, 2304x1296) + primary at (0, 0, 1512x982)
+        let union = super::macos_screens_union(&[
+            (0.0, 0.0, 1512.0, 982.0),
+            (-2304.0, 120.0, 2304.0, 1296.0),
+        ])
+        .unwrap();
+        assert_eq!(union, (-2304.0, 0.0, 1512.0, 1416.0));
+        assert_eq!(super::macos_screens_union(&[]), None);
+
+        let bounds = super::macos_drag_bounds(420.0, 440.0, union.0, union.1, union.2, union.3);
+        assert_eq!(bounds, (-2422.0, 1210.0, -141.0, 1051.0));
+
+        // Moving left by 800pt and up by 500pt crosses cleanly into the negative-X external display
+        let (nx, ny) = super::macos_drag_target_origin(
+            (100.0, 200.0),
+            (300.0, 600.0),
+            (-500.0, 100.0),
+            bounds,
+        );
+        assert_eq!((nx, ny), (-700.0, 700.0));
+    }
+
+    #[test]
+    fn macos_retina_logical_edge_peek_bounds_and_snap_origin() {
+        // Retina 2x primary 1512x982 logical pts (visibleFrame excludes 70pt Dock + 37pt Menu Bar)
+        // plus negative-X external display (-2304, 120, 2304x1296, visibleFrame height 1271).
+        let primary_h = 982.0;
+        let screens = [
+            ((0.0, 0.0, 1512.0, 982.0), (0.0, 70.0, 1512.0, 875.0)),
+            ((-2304.0, 120.0, 2304.0, 1296.0), (-2304.0, 120.0, 2304.0, 1271.0)),
+        ];
+
+        // Quartz cursor at mid-height on primary right edge: cg=(1506, 482) -> AppKit=(1506, 500)
+        let (ak_x, ak_y) = super::macos_quartz_to_appkit_point(1506.0, 482.0, primary_h);
+        assert_eq!((ak_x, ak_y), (1506.0, 500.0));
+        let vis = super::macos_active_visible_frame(&screens, ak_x, ak_y).unwrap();
+        assert_eq!(vis, (0.0, 70.0, 1512.0, 875.0));
+
+        // Deep right push (110pt >= 24% of 420pt) at AppKit origin (1202, 280) triggers "right"
+        let edge = super::detect_corner_safe_peek_edge(
+            ak_x.round() as i32,
+            ak_y.round() as i32,
+            1202,
+            280,
+            420,
+            440,
+            vis.0 as i32,
+            vis.1 as i32,
+            vis.2 as i32,
+            vis.3 as i32,
+        );
+        assert_eq!(edge, "right");
+
+        // Flush logical-point snap aligns right edge cleanly to 1512 - 420 = 1092 (ZERO 2x scaling bug!)
+        let snap = super::macos_peek_snap_origin("right", 280.0, 420.0, 440.0, vis).unwrap();
+        assert_eq!(snap, (1092.0, 280.0));
+        // Out-of-range Y clamps into [70, 70 + 875 - 440 = 505] (never under Dock or menu bar)
+        assert_eq!(super::macos_peek_snap_origin("right", 10.0, 420.0, 440.0, vis), Some((1092.0, 70.0)));
+        assert_eq!(super::macos_peek_snap_origin("right", 700.0, 420.0, 440.0, vis), Some((1092.0, 505.0)));
+
+        // Bottom-right corner above Dock (Quartz y = 892 -> AppKit y = 90, only 20pt above Dock vy=70) NEVER triggers
+        let (corner_x, corner_y) = super::macos_quartz_to_appkit_point(1480.0, 892.0, primary_h);
+        assert_eq!((corner_x, corner_y), (1480.0, 90.0));
+        assert_eq!(
+            super::detect_corner_safe_peek_edge(
+                corner_x as i32,
+                corner_y as i32,
+                1202,
+                70,
+                420,
+                440,
+                vis.0 as i32,
+                vis.1 as i32,
+                vis.2 as i32,
+                vis.3 as i32,
+            ),
+            "none"
+        );
+
+        // External negative-X display left edge: Quartz (-2300, 232) -> AppKit (-2300, 750)
+        let (ext_x, ext_y) = super::macos_quartz_to_appkit_point(-2300.0, 232.0, primary_h);
+        assert_eq!((ext_x, ext_y), (-2300.0, 750.0));
+        let ext_vis = super::macos_active_visible_frame(&screens, ext_x, ext_y).unwrap();
+        assert_eq!(ext_vis, (-2304.0, 120.0, 2304.0, 1271.0));
+        assert_eq!(
+            super::detect_corner_safe_peek_edge(
+                ext_x as i32,
+                ext_y as i32,
+                -2348,
+                520,
+                420,
+                440,
+                ext_vis.0 as i32,
+                ext_vis.1 as i32,
+                ext_vis.2 as i32,
+                ext_vis.3 as i32,
+            ),
+            "left"
+        );
+        assert_eq!(
+            super::macos_peek_snap_origin("left", 520.0, 420.0, 440.0, ext_vis),
+            Some((-2304.0, 520.0))
+        );
+    }
+
+    #[test]
+    fn linux_wm_clamped_edge_peek_triggers_mid_edge_and_never_in_corners() {
+        // 1920x1040 work area (e.g. GNOME Mutter / KDE KWin / XFCE clamping window inside work area)
+        let (wx, wy, ww, wh) = (0, 0, 1920, 1040);
+        let (win_w, win_h) = (420, 440);
+
+        // Clamped left edge (`win_x == 0`) with cursor pinned mid-height -> triggers "left"
+        assert_eq!(
+            super::detect_linux_edge_peek_after_drag(4, 500, 0, 280, win_w, win_h, wx, wy, ww, wh),
+            "left"
+        );
+        // Clamped right edge (`win_x + win_w == 1920`) with cursor pinned mid-height -> triggers "right"
+        assert_eq!(
+            super::detect_linux_edge_peek_after_drag(1914, 500, 1500, 280, win_w, win_h, wx, wy, ww, wh),
+            "right"
+        );
+
+        // All four 120px corners NEVER trigger even when clamped & cursor pinned!
+        assert_eq!(
+            super::detect_linux_edge_peek_after_drag(2, 60, 0, 0, win_w, win_h, wx, wy, ww, wh),
+            "none"
+        );
+        assert_eq!(
+            super::detect_linux_edge_peek_after_drag(2, 980, 0, 600, win_w, win_h, wx, wy, ww, wh),
+            "none"
+        );
+        assert_eq!(
+            super::detect_linux_edge_peek_after_drag(1918, 60, 1500, 0, win_w, win_h, wx, wy, ww, wh),
+            "none"
+        );
+        assert_eq!(
+            super::detect_linux_edge_peek_after_drag(1918, 980, 1500, 600, win_w, win_h, wx, wy, ww, wh),
+            "none"
+        );
+
+        // Normal edge parking with cursor inside the cat (NOT pinned <= 12px) does NOT trigger
+        assert_eq!(
+            super::detect_linux_edge_peek_after_drag(180, 500, 0, 280, win_w, win_h, wx, wy, ww, wh),
+            "none"
+        );
+        assert_eq!(
+            super::detect_linux_edge_peek_after_drag(1740, 500, 1500, 280, win_w, win_h, wx, wy, ww, wh),
+            "none"
+        );
+
+        // Unclamped Linux WM (deep off-edge push >= 24% mid-height) also triggers cleanly
+        assert_eq!(
+            super::detect_linux_edge_peek_after_drag(95, 500, -110, 280, win_w, win_h, wx, wy, ww, wh),
+            "left"
+        );
+        assert_eq!(
+            super::detect_linux_edge_peek_after_drag(1825, 500, 1610, 280, win_w, win_h, wx, wy, ww, wh),
+            "right"
+        );
     }
 
     #[test]
@@ -3403,6 +5006,121 @@ mod side_menu_layout_tests {
         // 20% mini scale (~95px tall): clamped at 55% so toast never steals the whole cat
         let lim20 = super::banner_hit_ry_limit(95.0);
         assert!((lim20 - 0.55).abs() < 1e-6);
+    }
+
+    #[test]
+    fn linux_webkit_env_avoids_stale_shm_ghosting_on_modern_webkit() {
+        // Intel/AMD Mesa on Ubuntu 22.04/24.04 (WebKitGTK 2.50.4): native DMABUF stays enabled
+        let mesa = super::select_linux_webkit_env(
+            Some((2, 50, 4)),
+            false,
+            false,
+            false,
+            false,
+            true,
+            true,
+            false,
+            false,
+        );
+        assert!(!mesa.disable_dmabuf);
+        assert!(!mesa.force_shm);
+        assert!(!mesa.disable_nv_explicit_sync);
+        assert!(mesa.prefer_x11);
+
+        // NVIDIA on WebKitGTK 2.50.4: uses WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 instead of DISABLE_DMABUF
+        let nv_modern = super::select_linux_webkit_env(
+            Some((2, 50, 4)),
+            false,
+            false,
+            true,
+            false,
+            true,
+            true,
+            false,
+            false,
+        );
+        assert!(nv_modern.force_shm);
+        assert!(!nv_modern.disable_dmabuf);
+        assert!(nv_modern.disable_nv_explicit_sync);
+
+        // Legacy KylinOS WebKitGTK 2.38 (< 2.44): keeps WEBKIT_DISABLE_DMABUF_RENDERER=1
+        let kylin_legacy = super::select_linux_webkit_env(
+            Some((2, 38, 6)),
+            false,
+            false,
+            false,
+            true,
+            false,
+            true,
+            false,
+            false,
+        );
+        assert!(!kylin_legacy.force_shm);
+        assert!(kylin_legacy.disable_dmabuf);
+        assert!(!kylin_legacy.prefer_x11);
+
+        // Explicit user override always wins
+        let overridden = super::select_linux_webkit_env(
+            Some((2, 54, 1)),
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            false,
+            true,
+        );
+        assert!(!overridden.force_shm);
+        assert!(!overridden.disable_dmabuf);
+        assert!(!overridden.disable_nv_explicit_sync);
+        assert!(!overridden.prefer_x11);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_webkit_version_probe_never_loads_webkit_4_0() {
+        // Must safely query the linked webkit2gtk-4.1 (libsoup3) without pulling in libsoup2.
+        let ver = super::probe_linux_webkitgtk_version();
+        if let Some((major, minor, _)) = ver {
+            assert_eq!(major, 2);
+            assert!(minor >= 32);
+        }
+    }
+
+    #[test]
+    fn edge_peek_snap_and_resize_preserve_flush_bezel_alignment() {
+        let (wx, wy, ww, wh) = (0, 0, 1920, 1040);
+        // 65% & 108% layouts across 0.5x / 1.0x / 1.25x scales snap flush to wx (left) & wx+ww (right)
+        for (layout, scale) in [
+            ("65", 0.5),
+            ("65", 1.0),
+            ("65", 1.25),
+            ("108", 0.5),
+            ("108", 1.0),
+            ("108", 1.25),
+        ] {
+            let (lw, lh) = super::window_dimensions(layout, scale);
+            let (w, h) = (lw as i32, lh as i32);
+            let left = super::compute_edge_peek_snap_pos("left", 300, w, h, wx, wy, ww, wh).unwrap();
+            assert_eq!(left.0, wx, "left edge must be flush for {layout} @ {scale}");
+            let right = super::compute_edge_peek_snap_pos("right", 300, w, h, wx, wy, ww, wh).unwrap();
+            assert_eq!(right.0 + w, wx + ww, "right edge must be flush for {layout} @ {scale}");
+        }
+
+        // Resizing while in LEFT Edge-Peek stays flush at x=0 instead of pulling inward!
+        let left_resized = super::compute_anchored_resize_pos("left", 0, 280, 420, 440, 540, 456);
+        assert_eq!(left_resized.0, 0);
+        assert_eq!(left_resized.1, 272);
+
+        // Resizing while in RIGHT Edge-Peek stays flush at x+w == 1920!
+        let right_resized = super::compute_anchored_resize_pos("right", 1500, 280, 420, 440, 540, 456);
+        assert_eq!(right_resized.0 + 540, 1920);
+        assert_eq!(right_resized.1, 272);
+
+        // Normal (non-peek) resize keeps bottom-right anchor
+        let normal_resized = super::compute_anchored_resize_pos("none", 1472, 532, 420, 440, 540, 456);
+        assert_eq!(normal_resized, (1352, 516));
     }
 
     #[test]

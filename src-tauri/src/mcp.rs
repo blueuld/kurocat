@@ -705,7 +705,7 @@ fn tool_definitions() -> Value {
         },
         {
             "name": "get_settings",
-            "description": "Read current KuroCat desktop pet settings (active pet, 3D/2D mode, scale, bubbles, purr sound, always-on-top, click-through lock, fpsCap, language, privacy guard, OBS, MCP).",
+            "description": "Read current KuroCat desktop pet settings (active pet, 3D/2D mode, scale, bubbles, purr sound, typing sound, always-on-top, click-through lock, fpsCap, language, privacy guard, OBS, MCP).",
             "inputSchema": {
                 "type": "object",
                 "properties": {},
@@ -732,6 +732,7 @@ fn tool_definitions() -> Value {
                     },
                     "showKeyBubbles": { "type": "boolean" },
                     "soundEnabled": { "type": "boolean" },
+                    "typingSoundEnabled": { "type": "boolean" },
                     "alwaysOnTop": { "type": "boolean" },
                     "clickThroughLocked": { "type": "boolean" },
                     "privacyPasswordGuard": { "type": "boolean" },
@@ -985,6 +986,9 @@ fn execute_tool(
             }
             if let Some(b) = args.get("soundEnabled").and_then(|v| v.as_bool()) {
                 s.sound_enabled = b;
+            }
+            if let Some(b) = args.get("typingSoundEnabled").and_then(|v| v.as_bool()) {
+                s.typing_sound_enabled = b;
             }
             if let Some(b) = args.get("alwaysOnTop").and_then(|v| v.as_bool()) {
                 s.always_on_top = b;

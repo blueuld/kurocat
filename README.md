@@ -14,20 +14,20 @@
   </p>
 
   <p>
-    <a href="https://qianyi.one/kurocat/"><img src="https://img.shields.io/badge/Website-qianyi.one%2Fkurocat-d4f044?style=flat-square&logo=googlechrome&logoColor=111" alt="Official Website" /></a>
+    <a href="https://kurocat.org/"><img src="https://img.shields.io/badge/Website-kurocat.org-d4f044?style=flat-square&logo=googlechrome&logoColor=111" alt="Official Website" /></a>
     <a href="https://github.com/qianyiai/kurocat/releases/latest"><img src="https://img.shields.io/github/v/release/qianyiai/kurocat?style=flat-square&color=38bdf8" alt="Latest Release" /></a>
     <a href="https://github.com/qianyiai/kurocat/blob/main/LICENSE"><img src="https://img.shields.io/github/license/qianyiai/kurocat?style=flat-square&color=22c55e" alt="MIT License" /></a>
     <img src="https://img.shields.io/badge/Platform-Win11%2F10%2F7%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-818cf8?style=flat-square" alt="Cross Platform" />
   </p>
 
   <p>
-    <a href="https://qianyi.one/kurocat/"><strong>🌐 官网在线试玩</strong></a> &nbsp;·&nbsp;
+    <a href="https://kurocat.org/"><strong>🌐 官网在线试玩</strong></a> &nbsp;·&nbsp;
     <a href="#download"><strong>📥 立即下载</strong></a> &nbsp;·&nbsp;
     <a href="#mcp"><strong>🤖 AI / MCP</strong></a> &nbsp;·&nbsp;
     <a href="https://github.com/qianyiai/homebrew-tap"><strong>🍺 Homebrew</strong></a>
   </p>
 
-  <sub>🔒 唯一官方渠道：<a href="https://github.com/qianyiai/kurocat">GitHub</a> · <a href="https://qianyi.one/kurocat/">qianyi.one/kurocat</a> · <a href="https://github.com/qianyiai/homebrew-tap">Homebrew Tap</a>（第三方镜像站非官方维护）</sub>
+  <sub>🔒 唯一官方渠道：<a href="https://github.com/qianyiai/kurocat">GitHub</a> · <a href="https://kurocat.org/">kurocat.org</a> · <a href="https://github.com/qianyiai/homebrew-tap">Homebrew Tap</a>（第三方镜像站非官方维护）</sub>
 </div>
 
 <br />
@@ -37,27 +37,27 @@
 <table>
   <tr>
     <td align="center" width="52%" valign="top">
-      <a href="https://qianyi.one/kurocat/" target="_blank" rel="noopener">
+      <a href="https://kurocat.org/" target="_blank" rel="noopener">
         <img src="docs/wake-pet-demo.webp" alt="KuroCat 3D 小黑猫午睡起床气与摸头呼噜演示" width="380" />
       </a>
       <br />
-      <strong>🐈‍⬛ <a href="https://qianyi.one/kurocat/">打开官网在线试玩（直接敲键盘 &amp; 摸猫头）→</a></strong>
+      <strong>🐈‍⬛ <a href="https://kurocat.org/">打开官网在线试玩（直接敲键盘 &amp; 摸猫头）→</a></strong>
       <br />
       <sub>
         午睡打盹 → 吵醒起床气 → 摸头呼噜消气 ·
-        <a href="https://qianyi.one/kurocat/media/wake-pet-9s.mp4">9s 含音效 MP4</a>
+        <a href="https://kurocat.org/media/wake-pet-9s.mp4">9s 含音效 MP4</a>
       </sub>
     </td>
     <td align="center" width="48%" valign="top">
-      <a href="https://qianyi.one/kurocat/#whale-demo" target="_blank" rel="noopener">
+      <a href="https://kurocat.org/#whale-demo" target="_blank" rel="noopener">
         <img src="docs/whale-demo.webp" alt="KuroCat 大肥鱼（鲸鱼娘）14s 实机演示" width="272" />
       </a>
       <br />
-      <strong>🐳 <a href="https://qianyi.one/kurocat/#whale-demo">观看大肥鱼 1080P 60fps 原片 →</a></strong>
+      <strong>🐳 <a href="https://kurocat.org/#whale-demo">观看大肥鱼 1080P 60fps 原片 →</a></strong>
       <br />
       <sub>
         鼠键尾三线同动 · 加速脸红大笑 · 密码捂眼 ·
-        <a href="https://qianyi.one/kurocat/media/whale-douyin-14s.mp4">国内高速 MP4</a>
+        <a href="https://kurocat.org/media/whale-douyin-14s.mp4">国内高速 MP4</a>
       </sub>
     </td>
   </tr>
@@ -73,12 +73,12 @@
 
 | 平台 | 推荐版本 | 体积 | 下载链接 |
 | --- | --- | :---: | --- |
-| **🪟 Windows 10 / 11** | x64 经典安装版（内置 65% / 108 键切换） | 2.15 MB | [**GitHub 官方源**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-5.1.2-x64-setup.exe) · [**国内高速**](https://qianyi.one/kurocat/#download) |
-| **🍎 macOS 10.15+** | Apple Silicon (M1–M4) & Intel 通用 DMG | 5.93 MB | [**GitHub 官方源**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-macos-universal.dmg) · [**国内高速**](https://qianyi.one/kurocat/releases/v5.1.2/KuroCat-v5.1.2-macos-universal.dmg) |
-| **🐧 Linux (x86_64)** | Ubuntu 22.04+ / Debian 12+ / 麒麟 V11+ | 2.38 MB | [**`.deb`**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-linux-amd64.deb) · [**`.AppImage`**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-linux-amd64.AppImage) · [**国内高速**](https://qianyi.one/kurocat/#linux-download) |
-| **🐧 Linux (ARM64)** | 飞腾 / 鲲鹏 / 麒麟 V11+ / 树莓派 | 2.34 MB | [**`.deb`**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-linux-arm64.deb) · [**`.AppImage`**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-linux-arm64.AppImage) · [**国内高速**](https://qianyi.one/kurocat/#linux-download) |
-| **🖥️ Windows 7 SP1** | 64 位离线兼容绿包（内置 WebView2 109） | 178.94 MB | [**GitHub 官方源**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-win7-x64-portable.zip) · [**国内高速**](https://qianyi.one/kurocat/releases/v5.1.2/KuroCat-v5.1.2-win7-x64-portable.zip) |
-| **🤖 Android** | Android 客户端 APK | 5.05 MB | [**GitHub 官方源**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-android.apk) · [**国内高速**](https://qianyi.one/kurocat/releases/v5.1.2/KuroCat-v5.1.2-android.apk) |
+| **🪟 Windows 10 / 11** | x64 经典安装版（内置 65% / 108 键切换） | 2.15 MB | [**GitHub 官方源**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-5.1.2-x64-setup.exe) · [**国内高速**](https://kurocat.org/#download) |
+| **🍎 macOS 10.15+** | Apple Silicon (M1–M4) & Intel 通用 DMG | 5.93 MB | [**GitHub 官方源**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-macos-universal.dmg) · [**国内高速**](https://kurocat.org/releases/v5.1.2/KuroCat-v5.1.2-macos-universal.dmg) |
+| **🐧 Linux (x86_64)** | Ubuntu 22.04+ / Debian 12+ / 麒麟 V11+ | 2.38 MB | [**`.deb`**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-linux-amd64.deb) · [**`.AppImage`**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-linux-amd64.AppImage) · [**国内高速**](https://kurocat.org/#linux-download) |
+| **🐧 Linux (ARM64)** | 飞腾 / 鲲鹏 / 麒麟 V11+ / 树莓派 | 2.34 MB | [**`.deb`**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-linux-arm64.deb) · [**`.AppImage`**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-linux-arm64.AppImage) · [**国内高速**](https://kurocat.org/#linux-download) |
+| **🖥️ Windows 7 SP1** | 64 位离线兼容绿包（内置 WebView2 109） | 178.94 MB | [**GitHub 官方源**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-win7-x64-portable.zip) · [**国内高速**](https://kurocat.org/releases/v5.1.2/KuroCat-v5.1.2-win7-x64-portable.zip) |
+| **🤖 Android** | Android 客户端 APK | 5.05 MB | [**GitHub 官方源**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-android.apk) · [**国内高速**](https://kurocat.org/releases/v5.1.2/KuroCat-v5.1.2-android.apk) |
 
 **🍺 macOS Homebrew 一键安装**（推荐，自动清理隔离属性、免手动 `xattr`）：
 
@@ -222,16 +222,16 @@ KuroCat 单文件原生内置 **Stdio** 与 **本机 Streamable HTTP（`127.0.0.
 
 ## 📈 实时增长曲线
 
-<a href="https://qianyi.one/kurocat/#growth">
+<a href="https://kurocat.org/#growth">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://qianyi.one/kurocat/api/growth-chart?theme=dark&amp;lang=zh" />
-    <source media="(prefers-color-scheme: light)" srcset="https://qianyi.one/kurocat/api/growth-chart?theme=light&amp;lang=zh" />
-    <img alt="KuroCat 实时下载量与 GitHub Stars 增长曲线" src="https://qianyi.one/kurocat/api/growth-chart?theme=dark&amp;lang=zh" width="100%" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://kurocat.org/api/growth-chart?theme=dark&amp;lang=zh" />
+    <source media="(prefers-color-scheme: light)" srcset="https://kurocat.org/api/growth-chart?theme=light&amp;lang=zh" />
+    <img alt="KuroCat 实时下载量与 GitHub Stars 增长曲线" src="https://kurocat.org/api/growth-chart?theme=dark&amp;lang=zh" width="100%" />
   </picture>
 </a>
 
 <p align="center">
-  <sub>📡 实时同步全渠道累计下载量与 GitHub Stars · <a href="https://qianyi.one/kurocat/#growth">前往官网查看可交互双轴曲线 →</a></sub>
+  <sub>📡 实时同步全渠道累计下载量与 GitHub Stars · <a href="https://kurocat.org/#growth">前往官网查看可交互双轴曲线 →</a></sub>
 </p>
 
 ---

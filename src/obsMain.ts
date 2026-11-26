@@ -63,6 +63,7 @@ const obsAgentCompanion = new AgentCompanionController({
 
 // Mute audio inside OBS Browser Source so purring never double-plays on stream
 catAudio.setEnabled(false);
+catAudio.setTypingSoundEnabled(false);
 
 // Optional query overrides for streamers (e.g. /obs?mode=3d&collar=red&scale=1.15&bubbles=0&breed=ragdoll&layout=108&orient=viewer)
 const params = new URLSearchParams(window.location.search);

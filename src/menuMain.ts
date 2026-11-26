@@ -24,6 +24,7 @@ interface AppSettings {
   hoverFadeOpacity: number;
   showKeyBubbles: boolean;
   soundEnabled: boolean;
+  typingSoundEnabled?: boolean;
   autostart: boolean;
   catBreed: string;
   mcpEnabled: boolean;
@@ -62,7 +63,7 @@ interface UpdateProgressEvent {
   info?: UpdateInfo | null;
 }
 
-type MenuTabId = 'appearance' | 'system';
+type MenuTabId = 'appearance' | 'interact' | 'system';
 
 let settings: AppSettings = {
   x: null,
@@ -75,6 +76,7 @@ let settings: AppSettings = {
   hoverFadeOpacity: 0.12,
   showKeyBubbles: true,
   soundEnabled: true,
+  typingSoundEnabled: false,
   autostart: false,
   catBreed: 'black',
   mcpEnabled: true,
@@ -97,7 +99,7 @@ let settings: AppSettings = {
 let catList: CatSkinConfig[] = [...DEFAULT_BUILTIN_CATS];
 let resolvedBackendLocale: string | null = null;
 let sliderDragging = false;
-let currentAppVersion = '5.1.2';
+let currentAppVersion = '5.1.3';
 let cachedUpdateInfo: UpdateInfo | null = null;
 let updateBusy = false;
 let activeTab: MenuTabId = 'appearance';
@@ -110,8 +112,14 @@ const scaleSliderEl = document.getElementById('scale-slider') as HTMLInputElemen
 const scaleValueEl = document.getElementById('scale-value') as HTMLButtonElement;
 const tailModeBadgeEl = document.getElementById('tail-mode-badge') as HTMLSpanElement;
 const tailKeysCountEl = document.getElementById('tail-keys-count') as HTMLSpanElement;
-const btnObsHideEl = document.getElementById('btn-obs-hide') as HTMLButtonElement;
+const btnOpenTailPickerEl = document.getElementById('btn-open-tail-picker') as HTMLButtonElement | null;
+const langSelectEl = document.getElementById('lang-select') as HTMLSelectElement | null;
+const btnHeaderLockEl = document.getElementById('btn-header-lock') as HTMLButtonElement | null;
+const mcpCardBodyEl = document.getElementById('mcp-card-body') as HTMLDivElement | null;
+const obsCardBodyEl = document.getElementById('obs-card-body') as HTMLDivElement | null;
+const obsPortPillEl = document.getElementById('obs-port-pill') as HTMLSpanElement | null;
 const btnCheckUpdateEl = document.getElementById('btn-check-update') as HTMLButtonElement | null;
+const lockKbdEl = document.getElementById('lock-kbd') as HTMLElement | null;
 
 function formatBreedPillLabel(cat: CatSkinConfig): string {
   const displayName = localizeBreedName(cat.id, cat.name, cat.builtin);
@@ -128,7 +136,7 @@ function formatHeaderCatName(cat: CatSkinConfig): string {
     cat.emoji && displayName.startsWith(cat.emoji)
       ? displayName.slice(cat.emoji.length).trimStart()
       : displayName;
-  return `${emoji} KuroCat ${bareName}`;
+  return `${emoji} KuroCat · ${bareName}`;
 }
 
 function switchTab(nextTab: MenuTabId): void {
@@ -196,31 +204,52 @@ function renderBreedPills(): void {
   }
 }
 
+function setToggleSwitch(id: string, on: boolean): void {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('is-on', on);
+  el.setAttribute('aria-checked', on ? 'true' : 'false');
+}
+
 function syncUI(): void {
   setActiveLocale(settings.language, resolvedBackendLocale);
   applyDomTranslations();
 
-  const setCheck = (id: string, on: boolean) => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = on ? '✓' : '';
-  };
-
-  setCheck('chk-privacy', settings.privacyPasswordGuard !== false);
-  setCheck('chk-bubbles', settings.showKeyBubbles);
-  setCheck('chk-lock', settings.clickThroughLocked);
-  setCheck('chk-sound', settings.soundEnabled);
-  setCheck('chk-top', settings.alwaysOnTop);
-  setCheck('chk-autostart', settings.autostart);
-  setCheck('chk-mcp', settings.mcpEnabled);
-  setCheck('chk-obs', Boolean(settings.obsEnabled));
-  setCheck('chk-obs-hide', Boolean(settings.obsEnabled && settings.obsHidePet));
-
-  if (btnObsHideEl) {
-    btnObsHideEl.classList.toggle('hidden', !settings.obsEnabled);
+  if (lockKbdEl) {
+    lockKbdEl.textContent = isMacPlatform() ? 'Option' : 'Alt';
   }
+
+  setToggleSwitch('sw-privacy', settings.privacyPasswordGuard !== false);
+  setToggleSwitch('sw-bubbles', settings.showKeyBubbles);
+  setToggleSwitch('sw-lock', settings.clickThroughLocked);
+  setToggleSwitch('sw-sound', settings.soundEnabled);
+  setToggleSwitch('sw-typing-sound', Boolean(settings.typingSoundEnabled));
+  setToggleSwitch('sw-top', settings.alwaysOnTop);
+  setToggleSwitch('sw-autostart', settings.autostart);
+  setToggleSwitch('sw-mcp', settings.mcpEnabled);
+  setToggleSwitch('sw-obs', Boolean(settings.obsEnabled));
+  setToggleSwitch('sw-obs-hide', Boolean(settings.obsEnabled && settings.obsHidePet));
+
+  if (btnHeaderLockEl) {
+    btnHeaderLockEl.classList.toggle('is-locked', settings.clickThroughLocked);
+    btnHeaderLockEl.setAttribute('aria-pressed', settings.clickThroughLocked ? 'true' : 'false');
+  }
+
+  // Conditionally reveal MCP & OBS bodies only when enabled
+  if (mcpCardBodyEl) {
+    mcpCardBodyEl.classList.toggle('hidden', !settings.mcpEnabled);
+  }
+  if (obsCardBodyEl) {
+    obsCardBodyEl.classList.toggle('hidden', !settings.obsEnabled);
+  }
+  if (obsPortPillEl) {
+    obsPortPillEl.textContent = `:${settings.obsPort || 27421}`;
+    obsPortPillEl.classList.toggle('hidden', !settings.obsEnabled);
+  }
+
   const obsHint = document.getElementById('obs-copy-hint');
   if (obsHint && !obsHint.classList.contains('copied')) {
-    obsHint.textContent = settings.obsEnabled ? `:${settings.obsPort || 27421}` : t('menu.obs_hint');
+    obsHint.textContent = t('menu.obs_hint');
   }
   const mcpHint = document.getElementById('mcp-copy-hint');
   if (mcpHint && !mcpHint.classList.contains('copied')) {
@@ -229,6 +258,10 @@ function syncUI(): void {
   const hooksHint = document.getElementById('hooks-copy-hint');
   if (hooksHint && !hooksHint.classList.contains('copied')) {
     hooksHint.textContent = t('menu.copy_hooks');
+  }
+  const shortcutHint = document.getElementById('shortcut-hint');
+  if (shortcutHint && !shortcutHint.classList.contains('copied')) {
+    shortcutHint.textContent = t('menu.desktop_shortcut_short');
   }
 
   if (!sliderDragging) {
@@ -250,9 +283,9 @@ function syncUI(): void {
   });
 
   const langSetting = normalizeLanguageSetting(settings.language);
-  document.querySelectorAll<HTMLButtonElement>('[data-lang]').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.lang === langSetting);
-  });
+  if (langSelectEl) {
+    langSelectEl.value = langSetting;
+  }
 
   const tailMode: TailKeyMode =
     settings.tailKeyMode === 'custom' ||
@@ -269,6 +302,9 @@ function syncUI(): void {
   }
   if (tailKeysCountEl) {
     tailKeysCountEl.textContent = t('menu.tail_keys_count', { count: tailIds.length });
+  }
+  if (btnOpenTailPickerEl) {
+    btnOpenTailPickerEl.classList.toggle('hidden', tailMode !== 'custom');
   }
 
   const activeCat = catList.find((c) => c.id === settings.catBreed) ?? catList[0];
@@ -304,15 +340,23 @@ function syncUI(): void {
     btn.classList.toggle('active', btn.dataset.statspos === statsPos);
   });
   document.querySelectorAll<HTMLButtonElement>('[data-collar]').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.collar === collarColor);
+    const isActive = btn.dataset.collar === collarColor;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-checked', isActive ? 'true' : 'false');
   });
+
+  const isDafeiyu = settings.catBreed === 'dafeiyu';
+  const styleCardEl = document.getElementById('style-card');
+  if (styleCardEl) {
+    styleCardEl.classList.toggle('hidden', isDafeiyu);
+  }
   const renderModeRowEl = document.getElementById('render-mode-row');
   if (renderModeRowEl) {
-    renderModeRowEl.classList.toggle('hidden', settings.catBreed === 'dafeiyu');
+    renderModeRowEl.classList.toggle('hidden', isDafeiyu);
   }
   const collarRowEl = document.getElementById('collar-row');
   if (collarRowEl) {
-    collarRowEl.classList.toggle('hidden', renderMode === '2d' || settings.catBreed === 'dafeiyu');
+    collarRowEl.classList.toggle('hidden', renderMode === '2d' || isDafeiyu);
   }
 
   const headphoneMode =
@@ -324,7 +368,7 @@ function syncUI(): void {
   });
   const headphoneRowEl = document.getElementById('headphone-row');
   if (headphoneRowEl) {
-    headphoneRowEl.classList.toggle('hidden', settings.catBreed === 'dafeiyu');
+    headphoneRowEl.classList.toggle('hidden', isDafeiyu);
   }
 
   const headerEl = document.getElementById('menu-header');
@@ -416,7 +460,7 @@ async function copyObsUrl(): Promise<void> {
       hint.classList.add('copied');
       setTimeout(() => {
         hint.classList.remove('copied');
-        hint.textContent = settings.obsEnabled ? `:${settings.obsPort || 27421}` : t('menu.obs_hint');
+        hint.textContent = t('menu.obs_hint');
       }, 2000);
     }
   } catch (err) {
@@ -432,7 +476,7 @@ async function createDesktopShortcut(): Promise<void> {
       hint.textContent = t('menu.created_hint');
       hint.classList.add('copied');
       setTimeout(() => {
-        hint.textContent = 'KuroCat';
+        hint.textContent = t('menu.desktop_shortcut_short');
         hint.classList.remove('copied');
       }, 1800);
     }
@@ -441,7 +485,7 @@ async function createDesktopShortcut(): Promise<void> {
     if (hint) {
       hint.textContent = '✕';
       setTimeout(() => {
-        hint.textContent = 'KuroCat';
+        hint.textContent = t('menu.desktop_shortcut_short');
       }, 1800);
     }
   }
@@ -497,6 +541,8 @@ async function bootstrap(): Promise<void> {
   if (isMacPlatform()) {
     const shortcutBtn = document.getElementById('btn-desktop-shortcut');
     if (shortcutBtn) shortcutBtn.classList.add('hidden');
+    const actionRow = document.getElementById('sys-action-row');
+    if (actionRow) actionRow.classList.add('single-action');
   }
 
   let resolveInitReady!: () => void;
@@ -510,14 +556,14 @@ async function bootstrap(): Promise<void> {
     const tabBtn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-tab]');
     if (tabBtn) {
       const next = tabBtn.dataset.tab;
-      if (next === 'appearance' || next === 'system') {
+      if (next === 'appearance' || next === 'interact' || next === 'system') {
         switchTab(next);
       }
       return;
     }
 
     const target = (e.target as HTMLElement).closest<HTMLElement>(
-      '[data-action], [data-breed], [data-rendermode], [data-collar], [data-headphonemode], [data-kblayout], [data-kborient], [data-tailmode], [data-fpscap], [data-lang], [data-statspos], [data-hoverfade]',
+      '[data-action], [data-breed], [data-rendermode], [data-collar], [data-headphonemode], [data-kblayout], [data-kborient], [data-tailmode], [data-fpscap], [data-statspos], [data-hoverfade]',
     );
     if (!target) return;
 
@@ -525,12 +571,6 @@ async function bootstrap(): Promise<void> {
       const fpsAttr = target.dataset.fpscap;
       if (fpsAttr === '0' || fpsAttr === '30') {
         void applySettingsPatch({ fpsCap: fpsAttr === '30' ? 30 : 0 });
-        return;
-      }
-
-      const langAttr = target.dataset.lang;
-      if (langAttr) {
-        void applySettingsPatch({ language: normalizeLanguageSetting(langAttr) });
         return;
       }
 
@@ -618,6 +658,9 @@ async function bootstrap(): Promise<void> {
         case 'toggle-sound':
           void applySettingsPatch({ soundEnabled: !settings.soundEnabled });
           break;
+        case 'toggle-typing-sound':
+          void applySettingsPatch({ typingSoundEnabled: !settings.typingSoundEnabled });
+          break;
         case 'toggle-top':
           void applySettingsPatch({ alwaysOnTop: !settings.alwaysOnTop });
           break;
@@ -635,12 +678,14 @@ async function bootstrap(): Promise<void> {
         case 'copy-obs':
           void copyObsUrl();
           break;
-        case 'toggle-obs-hide':
-          void applySettingsPatch({ obsHidePet: !settings.obsHidePet });
-          if (!settings.obsHidePet) {
+        case 'toggle-obs-hide': {
+          const nextHide = !settings.obsHidePet;
+          void applySettingsPatch({ obsHidePet: nextHide });
+          if (nextHide) {
             closeMenu();
           }
           break;
+        }
         case 'toggle-mcp':
           void applySettingsPatch({ mcpEnabled: !settings.mcpEnabled });
           break;
@@ -670,6 +715,14 @@ async function bootstrap(): Promise<void> {
     });
   });
 
+  if (langSelectEl) {
+    langSelectEl.addEventListener('change', () => {
+      void initReadyPromise.then(() => {
+        void applySettingsPatch({ language: normalizeLanguageSetting(langSelectEl.value) });
+      });
+    });
+  }
+
   let inTauri = true;
   try {
     const [loadedSettings, loadedCats, ver, cachedUpd, resolvedLoc] = await Promise.all([
@@ -695,13 +748,20 @@ async function bootstrap(): Promise<void> {
   } catch (err) {
     inTauri = false;
     console.warn('Running menu outside Tauri IPC:', err);
-    // Allow static browser layout verification via ?lang=en-US&tab=system&obs=1
+    // Allow static browser layout verification via ?lang=en-US&tab=system&obs=1&tail=custom
     const params = new URLSearchParams(window.location.search);
     const qLang = params.get('lang');
     if (qLang) settings.language = qLang;
     if (params.get('obs') === '1') settings.obsEnabled = true;
+    if (params.get('mcp') === '0') settings.mcpEnabled = false;
+    const qTail = params.get('tail');
+    if (qTail === 'smart' || qTail === 'custom' || qTail === 'edge' || qTail === 'off') {
+      settings.tailKeyMode = qTail;
+    }
+    const qBreed = params.get('breed');
+    if (qBreed) settings.catBreed = qBreed;
     const qTab = params.get('tab');
-    if (qTab === 'appearance' || qTab === 'system') activeTab = qTab;
+    if (qTab === 'appearance' || qTab === 'interact' || qTab === 'system') activeTab = qTab;
     // Populate all 7 built-in cats for realistic layout verification outside Tauri
     catList = [
       ...DEFAULT_BUILTIN_CATS.slice(0, 2),

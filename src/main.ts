@@ -6,6 +6,7 @@ import {
   DEFAULT_TAIL_KEY_IDS,
   KuroCatEngine,
   type KeyboardOrientation,
+  type PeekEdge,
   type TailKeyMode,
 } from './catEngine';
 import { catAudio } from './audio';
@@ -45,6 +46,7 @@ interface AppSettings {
   hoverFadeOpacity: number;
   showKeyBubbles: boolean;
   soundEnabled: boolean;
+  typingSoundEnabled?: boolean;
   autostart: boolean;
   catBreed: string;
   mcpEnabled: boolean;
@@ -119,12 +121,14 @@ function saveDismissedVersion(version: string): void {
   }
 }
 
-let appVersion = '5.1.2';
+let appVersion = '5.1.3';
 let latestUpdateInfo: UpdateInfo | null = null;
 let updateBusy = false;
 let dismissedVersion: string | null = loadDismissedVersion();
-let currentToastKind: 'update' | 'transient' | null = null;
+let currentToastKind: 'update' | 'admin' | 'transient' | null = null;
 let toastAutoHideTimer: number | null = null;
+const ADMIN_HINT_DISMISSED_KEY = 'kurocat_admin_game_hint_dismissed';
+let adminHintShownThisSession = false;
 let sliderDragging = false;
 let altOverride = false;
 let lastKnownLockState: boolean | null = null;
@@ -148,6 +152,7 @@ let settings: AppSettings = {
   hoverFadeOpacity: 0.12,
   showKeyBubbles: true,
   soundEnabled: true,
+  typingSoundEnabled: false,
   autostart: false,
   catBreed: 'black',
   mcpEnabled: true,
@@ -170,6 +175,7 @@ const canvas = document.getElementById('pet-canvas') as HTMLCanvasElement;
 let canvas3d = document.getElementById('pet-canvas-3d') as HTMLCanvasElement;
 let canvas3dMouseDownListener: ((e: MouseEvent) => void) | null = null;
 let canvas3dContextMenuListener: ((e: MouseEvent) => void) | null = null;
+let canvas3dDblClickListener: (() => void) | null = null;
 let canvas3dDirty = false;
 let settingsPatchSeq = 0;
 const menuEl = document.getElementById('context-menu') as HTMLDivElement;
@@ -180,6 +186,7 @@ const updateToastEl = document.getElementById('update-toast') as HTMLDivElement;
 const updateToastTextEl = document.getElementById('update-toast-text') as HTMLSpanElement;
 const btnToastInstallEl = document.getElementById('btn-toast-install') as HTMLButtonElement;
 const btnToastUnlockEl = document.getElementById('btn-toast-unlock') as HTMLButtonElement;
+const btnToastAdminEl = document.getElementById('btn-toast-admin') as HTMLButtonElement | null;
 const btnToastOpenEl = document.getElementById('btn-toast-open') as HTMLButtonElement;
 const btnToastCloseEl = document.getElementById('btn-toast-close') as HTMLButtonElement;
 const tailPickerBarEl = document.getElementById('tail-picker-bar') as HTMLDivElement;
@@ -231,6 +238,9 @@ function bindCanvas3dListeners(el: HTMLCanvasElement): void {
   if (canvas3dContextMenuListener) {
     el.addEventListener('contextmenu', canvas3dContextMenuListener);
   }
+  if (canvas3dDblClickListener) {
+    el.addEventListener('dblclick', canvas3dDblClickListener);
+  }
   el.addEventListener('webglcontextlost', (ev) => {
     ev.preventDefault();
     if (el !== canvas3d) return;
@@ -262,6 +272,9 @@ function replaceCanvas3d(): HTMLCanvasElement {
   }
   if (canvas3dContextMenuListener) {
     old.removeEventListener('contextmenu', canvas3dContextMenuListener);
+  }
+  if (canvas3dDblClickListener) {
+    old.removeEventListener('dblclick', canvas3dDblClickListener);
   }
   const fresh = document.createElement('canvas');
   fresh.id = 'pet-canvas-3d';
@@ -359,6 +372,7 @@ function syncEngine3DState(): void {
   engine3d.setTailKeyConfig(tailMode, tailIds);
   engine3d.setPrivacyMode(privacyActive);
   engine3d.setFpsCap(settings.fpsCap === 30 ? 30 : 0);
+  engine3d.setPeekEdge(engine.getPeekEdge());
   engine3d.resize();
 }
 
@@ -495,6 +509,7 @@ function syncMenuUI(): void {
   setCheck('chk-bubbles', settings.showKeyBubbles);
   setCheck('chk-lock', settings.clickThroughLocked);
   setCheck('chk-sound', settings.soundEnabled);
+  setCheck('chk-typing-sound', Boolean(settings.typingSoundEnabled));
   setCheck('chk-top', settings.alwaysOnTop);
   setCheck('chk-autostart', settings.autostart);
   setCheck('chk-mcp', settings.mcpEnabled);
@@ -597,6 +612,7 @@ function syncMenuUI(): void {
     engine.setRenderScale(settings.scale);
   }
   catAudio.setEnabled(settings.soundEnabled);
+  catAudio.setTypingSoundEnabled(Boolean(settings.typingSoundEnabled));
   activateRenderEngine();
   if (tailPickerOpen) syncTailPickerSelection();
 }
@@ -879,6 +895,29 @@ function formatLockedToastText(_startup = false): string {
   return isMacPlatform() ? `🔒 ${t('toast.locked_macos')}` : `🔒 ${t('toast.locked_windows')}`;
 }
 
+function formatAdminGameToastText(): string {
+  if (window.innerWidth < 260) {
+    return '🛡️';
+  }
+  return `🛡️ ${t('toast.game_admin_hint')}`;
+}
+
+function isAdminHintDismissed(): boolean {
+  try {
+    return window.localStorage.getItem(ADMIN_HINT_DISMISSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveAdminHintDismissed(): void {
+  try {
+    window.localStorage.setItem(ADMIN_HINT_DISMISSED_KEY, '1');
+  } catch {
+    // ignore storage errors
+  }
+}
+
 function showPendingUpdateToast(): boolean {
   if (
     updateBusy ||
@@ -902,7 +941,7 @@ function hideUpdateToast(restorePendingUpdate = false): void {
   }
   const prevKind = currentToastKind;
   currentToastKind = null;
-  if (restorePendingUpdate && prevKind === 'transient' && showPendingUpdateToast()) {
+  if (restorePendingUpdate && (prevKind === 'transient' || prevKind === 'admin') && showPendingUpdateToast()) {
     return;
   }
   if (!updateToastEl.classList.contains('hidden')) {
@@ -917,10 +956,11 @@ function showUpdateToast(
   options: {
     showInstall?: boolean;
     showUnlock?: boolean;
+    showAdmin?: boolean;
     showOpen?: boolean;
     autoHideMs?: number;
     busy?: boolean;
-    kind?: 'update' | 'transient';
+    kind?: 'update' | 'admin' | 'transient';
   } = {},
 ): void {
   if (toastAutoHideTimer !== null) {
@@ -932,6 +972,7 @@ function showUpdateToast(
   btnToastInstallEl.classList.toggle('hidden', !options.showInstall);
   btnToastInstallEl.disabled = Boolean(options.busy);
   btnToastUnlockEl.classList.toggle('hidden', !options.showUnlock);
+  btnToastAdminEl?.classList.toggle('hidden', !options.showAdmin);
   btnToastOpenEl.classList.toggle('hidden', !options.showOpen);
   updateToastEl.classList.remove('hidden');
   void invoke('set_update_banner_open', { open: true });
@@ -1087,6 +1128,12 @@ async function bootstrap(): Promise<void> {
     void applySettingsPatch({ clickThroughLocked: false });
   });
 
+  btnToastAdminEl?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    hideUpdateToast(false);
+    void invoke('restart_as_admin');
+  });
+
   btnToastOpenEl.addEventListener('click', (e) => {
     e.stopPropagation();
     const url = latestUpdateInfo?.releaseUrl || 'https://github.com/qianyiai/kurocat/releases/latest';
@@ -1099,6 +1146,9 @@ async function bootstrap(): Promise<void> {
       dismissedVersion = latestUpdateInfo.latestVersion;
       saveDismissedVersion(latestUpdateInfo.latestVersion);
       hideUpdateToast(false);
+    } else if (currentToastKind === 'admin') {
+      saveAdminHintDismissed();
+      hideUpdateToast(true);
     } else {
       hideUpdateToast(true);
     }
@@ -1214,6 +1264,22 @@ async function bootstrap(): Promise<void> {
     if (preset) applyTailPreset(preset);
   });
 
+  let lastDragGlobalX: number | null = null;
+  let dragInFlight = false;
+  let nativeDragActive = false;
+  let cancelPendingTapVsDrag: (() => void) | null = null;
+
+  const computeKeySoundPan = (vk: number): number => {
+    const kbLayout: KeyboardLayoutId = settings.keyboardLayout === '108' ? '108' : '65';
+    const spec = resolveKeyByVk(vk, kbLayout);
+    if (!spec) return 0;
+    const layout = getKeyboardLayout(kbLayout);
+    const centerU = spec.uStart + spec.uWidth * 0.5;
+    const normX = Math.max(0, Math.min(1, centerU / layout.totalUnits));
+    return (normX * 2 - 1) * 0.35;
+  };
+
+
   const typingStats = new TypingStats();
   const typingStatsEl = document.getElementById('typing-stats');
   const renderTypingStats = (): void => {
@@ -1288,6 +1354,9 @@ async function bootstrap(): Promise<void> {
           }
           break;
         }
+        if (!p.repeat && settings.typingSoundEnabled) {
+          catAudio.playKeyDown(p.vk, computeKeySoundPan(p.vk));
+        }
         if (active3d && engine3d) engine3d.onKeyDown(p.vk, p.repeat);
         else engine.onKeyDown(p.vk, p.repeat);
         // 打字统计：只统计能产生字符的键；退格回退；快捷键组合不计
@@ -1301,6 +1370,9 @@ async function bootstrap(): Promise<void> {
         }
         break;
       case 'keyUp':
+        if (!tailPickerOpen && settings.typingSoundEnabled) {
+          catAudio.playKeyUp(p.vk, computeKeySoundPan(p.vk));
+        }
         {
           const upSpec = resolveKeyByVk(p.vk, settings.keyboardLayout);
           if (upSpec && SHORTCUT_MOD_IDS.has(upSpec.id)) heldShortcutMods.delete(upSpec.id);
@@ -1310,16 +1382,35 @@ async function bootstrap(): Promise<void> {
           engine.onKeyUp(p.vk);
         }
         break;
-      case 'mouseMove':
+      case 'mouseMove': {
+        if (canvas.classList.contains('pet-dragging') || canvas3d.classList.contains('pet-dragging')) {
+          const prevX = lastDragGlobalX;
+          lastDragGlobalX = p.nx;
+          if (prevX !== null) {
+            const vx = (p.nx - prevX) * 68;
+            if (active3d && engine3d) engine3d.updateDragVelocity(vx);
+            else engine.updateDragVelocity(vx);
+          }
+        }
         if (active3d && engine3d) engine3d.onGlobalMouseMove(p.nx, p.ny);
         else engine.onGlobalMouseMove(p.nx, p.ny);
         break;
+      }
       case 'mouseDown':
         agentCompanion.notifyRealUserInput();
+        if (settings.typingSoundEnabled) {
+          catAudio.playMouseDown(p.button);
+        }
         if (active3d && engine3d) engine3d.onMouseDown(p.button);
         else engine.onMouseDown(p.button);
         break;
       case 'mouseUp':
+        if (p.button === 'left') {
+          resolveLinuxMouseUp?.();
+        }
+        if (settings.typingSoundEnabled) {
+          catAudio.playMouseUp(p.button);
+        }
         if (active3d && engine3d) engine3d.onMouseUp(p.button);
         else engine.onMouseUp(p.button);
         break;
@@ -1345,6 +1436,49 @@ async function bootstrap(): Promise<void> {
     agentCompanion.handleEvent(ev.payload);
   });
 
+  await listen<string>('kuro-peek-edge', (ev) => {
+    const raw = ev.payload;
+    const edge: PeekEdge = raw === 'left' || raw === 'right' ? raw : 'none';
+    engine.setPeekEdge(edge);
+    engine3d?.setPeekEdge(edge);
+  });
+
+  await listen<string>('kuro-peek-preview', (ev) => {
+    const raw = ev.payload;
+    const edge: PeekEdge = raw === 'left' || raw === 'right' ? raw : 'none';
+    engine.setPeekPreview(edge);
+    engine3d?.setPeekPreview(edge);
+  });
+
+  await listen<boolean>('kuro-native-drag', (ev) => {
+    const active = Boolean(ev.payload);
+    nativeDragActive = active;
+    if (active) {
+      // macOS unfocused first-click fallback claimed this drag directly in Rust:
+      // cancel any armed JS tap detector and enter scruff-lift + velocity sway seamlessly!
+      cancelPendingTapVsDrag?.();
+      lastDragGlobalX = null;
+      canvas.classList.add('pet-dragging');
+      canvas3d.classList.add('pet-dragging');
+      engine.setPeekPreview('none');
+      engine3d?.setPeekPreview('none');
+      if (engine.getPeekEdge() !== 'none' || (engine3d?.getPeekEdge() ?? 'none') !== 'none') {
+        engine.setPeekEdge('none');
+        engine3d?.setPeekEdge('none');
+      }
+      if (active3d && engine3d) engine3d.setDragging(true);
+      else engine.setDragging(true);
+    } else if (!dragInFlight) {
+      lastDragGlobalX = null;
+      canvas.classList.remove('pet-dragging');
+      canvas3d.classList.remove('pet-dragging');
+      engine.setDragging(false);
+      engine3d?.setDragging(false);
+      engine.onMouseUp('left');
+      engine3d?.onMouseUp('left');
+    }
+  });
+
   try {
     gameActive = await invoke<boolean>('get_game_active');
     const wearNow = shouldWearHeadphonesNow();
@@ -1356,13 +1490,29 @@ async function bootstrap(): Promise<void> {
     // non-Tauri or older backend
   }
 
-  await listen<{ active?: boolean; gameName?: string | null }>('kuro-game-active', (ev) => {
+  await listen<{ active?: boolean; gameName?: string | null; needsAdmin?: boolean }>('kuro-game-active', (ev) => {
     gameActive = Boolean(ev.payload?.active);
     const wearNow = shouldWearHeadphonesNow();
     engine.setGameActive(gameActive);
     engine3d?.setGameActive(gameActive);
     engine.setHeadphones(wearNow);
     engine3d?.setHeadphones(wearNow);
+
+    if (
+      isWindowsPlatform() &&
+      gameActive &&
+      ev.payload?.needsAdmin &&
+      !updateBusy &&
+      !adminHintShownThisSession &&
+      !isAdminHintDismissed()
+    ) {
+      adminHintShownThisSession = true;
+      showUpdateToast(formatAdminGameToastText(), {
+        showAdmin: true,
+        autoHideMs: 14000,
+        kind: 'admin',
+      });
+    }
   });
 
   let lastPetHover = false;
@@ -1393,44 +1543,195 @@ async function bootstrap(): Promise<void> {
     canvas.classList.remove('tail-key-hover');
   });
 
-  // Left-click keycap toggle in tail-picker mode, OR drag to reposition transparent window (both 2D & 3D canvases!)
-  const handleCanvasMouseDown = async (e: MouseEvent) => {
-    if (e.button === 0) {
-      closeContextMenu();
-      if (tailPickerOpen) {
-        const hit = engine.hitTestKeyAtClientPoint(e.clientX, e.clientY);
-        if (hit) {
-          e.preventDefault();
-          e.stopPropagation();
-          toggleTailKeyId(hit.id);
-          return;
-        }
-      }
-      if (settings.clickThroughLocked && !altOverride && !e.altKey) return;
-      canvas.classList.add('pet-dragging');
-      canvas3d.classList.add('pet-dragging');
-      void invoke('set_dragging', { dragging: true });
-      try {
-        // On macOS/Linux, awaiting an IPC call before `startDragging()` loses AppKit's synchronous
-        // current NSLeftMouseDown event and causes dragging to silently fail (#59). Only Windows uses
-        // the native unclamped `start_pet_drag` loop; other platforms must invoke `startDragging()` directly.
-        if (isWindowsPlatform()) {
-          const nativeHandled = await invoke<boolean>('start_pet_drag').catch(() => false);
-          if (!nativeHandled) {
-            await getCurrentWindow().startDragging();
+  // Left-click: quick tap (< 4px / < 220ms) pokes nose/tail/chin/head; drag >= 4px enters scruffed drag mode!
+  const usesNativeDrag = isWindowsPlatform() || isMacPlatform();
+  let resolveLinuxMouseUp: (() => void) | null = null;
+  const waitForFallbackMouseUp = (): Promise<void> =>
+    new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        resolveLinuxMouseUp = null;
+        window.removeEventListener('mouseup', finish);
+        window.removeEventListener('blur', finish);
+        window.clearTimeout(timer);
+        resolve();
+      };
+      resolveLinuxMouseUp = finish;
+      window.addEventListener('mouseup', finish, { once: true });
+      window.addEventListener('blur', finish, { once: true });
+      const timer = window.setTimeout(finish, 15000);
+    });
+
+  const runPetWindowDrag = async () => {
+    if (dragInFlight) return;
+    dragInFlight = true;
+    lastDragGlobalX = null;
+    canvas.classList.add('pet-dragging');
+    canvas3d.classList.add('pet-dragging');
+    // Pulling from edge immediately pops out of peek mode into scruffed drag for BOTH cats and dafeiyu!
+    // Let backend `start_pet_drag` (Win/macOS) or `wait_linux_drag_end` (Linux X11) atomically read & clear
+    // `state.peek_edge` so `pulled_from_edge` suppression has zero IPC race conditions.
+    const wasPeeking =
+      engine.getPeekEdge() !== 'none' || (engine3d?.getPeekEdge() ?? 'none') !== 'none';
+    engine.setPeekPreview('none');
+    engine3d?.setPeekPreview('none');
+    if (wasPeeking) {
+      engine.setPeekEdge('none');
+      engine3d?.setPeekEdge('none');
+    }
+    if (active3d && engine3d) engine3d.setDragging(true);
+    else engine.setDragging(true);
+    let usedFallbackDrag = false;
+    try {
+      if (usesNativeDrag) {
+        // Both Windows and macOS use native `start_pet_drag`, which coordinates `state.dragging`
+        // internally (via atomic `MACOS_NATIVE_DRAG_ACTIVE` on macOS). Do NOT pre-call `set_dragging(true)`
+        // beforehand; only call `set_dragging` when falling back to `getCurrentWindow().startDragging()`.
+        const nativeHandled = await invoke<boolean>('start_pet_drag').catch(() => false);
+        if (!nativeHandled) {
+          usedFallbackDrag = true;
+          if (wasPeeking) {
+            void invoke('set_peek_edge', { edge: 'none' }).catch(() => {});
           }
-        } else {
+          void invoke('set_dragging', { dragging: true });
           await getCurrentWindow().startDragging();
         }
-      } finally {
-        canvas.classList.remove('pet-dragging');
-        canvas3d.classList.remove('pet-dragging');
-        engine.onMouseUp('left');
-        engine3d?.onMouseUp('left');
+      } else {
+        usedFallbackDrag = true;
+        void invoke('set_dragging', { dragging: true });
+        await getCurrentWindow().startDragging();
+        // On Linux, GTK `begin_move_drag` resolves immediately (~1ms) before mouse release:
+        // wait until the user actually releases Button 1 (with live 200ms edge-peek preview on X11,
+        // or falling back to `mouseUp` event on pure Wayland without X11).
+        const linuxWaited = await invoke<boolean>('wait_linux_drag_end').catch(() => false);
+        if (!linuxWaited) {
+          if (wasPeeking) {
+            void invoke('set_peek_edge', { edge: 'none' }).catch(() => {});
+          }
+          await waitForFallbackMouseUp();
+        }
+      }
+    } finally {
+      dragInFlight = false;
+      lastDragGlobalX = null;
+      canvas.classList.remove('pet-dragging');
+      canvas3d.classList.remove('pet-dragging');
+      engine.setDragging(false);
+      engine3d?.setDragging(false);
+      engine.onMouseUp('left');
+      engine3d?.onMouseUp('left');
+      if (usedFallbackDrag) {
         void invoke('set_dragging', { dragging: false });
-        void invoke('save_window_pos');
+      }
+      void invoke<string>('sync_peek_edge_after_drag')
+        .then((raw) => {
+          const edge: PeekEdge = raw === 'left' || raw === 'right' ? raw : 'none';
+          engine.setPeekEdge(edge);
+          engine3d?.setPeekEdge(edge);
+          return invoke('save_window_pos');
+        })
+        .catch(() => {
+          void invoke('save_window_pos').catch(() => {});
+        });
+    }
+  };
+
+  const handleCanvasMouseDown = async (e: MouseEvent) => {
+    if (e.button !== 0) return;
+    closeContextMenu();
+    if (tailPickerOpen) {
+      const hit = engine.hitTestKeyAtClientPoint(e.clientX, e.clientY);
+      if (hit) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleTailKeyId(hit.id);
+        return;
       }
     }
+    if (settings.clickThroughLocked && !altOverride && !e.altKey) return;
+    if (nativeDragActive || dragInFlight) return;
+
+    const downX = e.clientX;
+    const downY = e.clientY;
+    const downAt = performance.now();
+
+    // On Linux, startDragging() must fire synchronously inside mousedown,
+    // so only intercept direct taps on the crisp nose/tail hotspots; everywhere else drags immediately.
+    if (!usesNativeDrag) {
+      const zone =
+        active3d && engine3d
+          ? engine3d.hitTestCatZoneAtClientPoint(downX, downY)
+          : engine.hitTestCatZoneAtClientPoint(downX, downY);
+      if (zone === 'nose' || zone === 'tail') {
+        if (active3d && engine3d) engine3d.onCatTapAtClientPoint(downX, downY);
+        else engine.onCatTapAtClientPoint(downX, downY);
+        return;
+      }
+      await runPetWindowDrag();
+      return;
+    }
+
+    // On Windows & macOS (native 120Hz start_pet_drag), wait up to 4px movement or 220ms hold
+    // to cleanly separate Tap (boop nose/tail/chin/head) vs Scruff Drag!
+    const DRAG_THRESHOLD_PX = 4;
+    const TAP_MAX_MS = 220;
+    let settled = false;
+    let holdTimer: number | null = null;
+
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('blur', onCancel);
+      if (holdTimer !== null) {
+        window.clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+      if (cancelPendingTapVsDrag === onCancel) {
+        cancelPendingTapVsDrag = null;
+      }
+    };
+
+    const beginDrag = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (nativeDragActive) return;
+      void runPetWindowDrag();
+    };
+
+    const onMove = (ev: MouseEvent) => {
+      if (Math.hypot(ev.clientX - downX, ev.clientY - downY) >= DRAG_THRESHOLD_PX) {
+        beginDrag();
+      }
+    };
+
+    const onUp = (ev: MouseEvent) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (nativeDragActive) return;
+      const dt = performance.now() - downAt;
+      const dist = Math.hypot(ev.clientX - downX, ev.clientY - downY);
+      if (dist < DRAG_THRESHOLD_PX && dt <= TAP_MAX_MS) {
+        if (active3d && engine3d) engine3d.onCatTapAtClientPoint(downX, downY);
+        else engine.onCatTapAtClientPoint(downX, downY);
+      }
+    };
+
+    const onCancel = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+    };
+
+    cancelPendingTapVsDrag?.();
+    cancelPendingTapVsDrag = onCancel;
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('blur', onCancel);
+    holdTimer = window.setTimeout(beginDrag, TAP_MAX_MS);
   };
   canvas3dMouseDownListener = handleCanvasMouseDown;
   canvas.addEventListener('mousedown', handleCanvasMouseDown);
@@ -1447,6 +1748,15 @@ async function bootstrap(): Promise<void> {
   };
   canvas3dContextMenuListener = handleCanvasContextMenu;
   canvas.addEventListener('contextmenu', handleCanvasContextMenu);
+  const handleCanvasDblClick = () => {
+    if (engine.getPeekEdge() !== 'none' || (engine3d?.getPeekEdge() ?? 'none') !== 'none') {
+      engine.setPeekEdge('none');
+      engine3d?.setPeekEdge('none');
+      void invoke('set_peek_edge', { edge: 'none' }).catch(() => {});
+    }
+  };
+  canvas3dDblClickListener = handleCanvasDblClick;
+  canvas.addEventListener('dblclick', handleCanvasDblClick);
   bindCanvas3dListeners(canvas3d);
 
   // Side menu window auto-closes on its own focus loss; do NOT close on main blur (clicking the menu blurs main!)
@@ -1553,6 +1863,9 @@ async function bootstrap(): Promise<void> {
         break;
       case 'toggle-sound':
         void applySettingsPatch({ soundEnabled: !settings.soundEnabled });
+        break;
+      case 'toggle-typing-sound':
+        void applySettingsPatch({ typingSoundEnabled: !settings.typingSoundEnabled });
         break;
       case 'toggle-top':
         void applySettingsPatch({ alwaysOnTop: !settings.alwaysOnTop });
