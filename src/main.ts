@@ -1204,6 +1204,17 @@ async function bootstrap(): Promise<void> {
     const total = t('stats.today', { count: today.toLocaleString() });
     typingStatsEl.textContent = cpm > 0 ? `${total} · ${t('stats.speed', { cpm })}` : total;
   };
+  // 只有真正产生字符的键才计入字数；Ctrl/Alt/Win 组合视为快捷键，不计数
+  const heldShortcutMods = new Set<string>();
+  const SHORTCUT_MOD_IDS = new Set(['lctrl', 'rctrl', 'lalt', 'ralt', 'lwin', 'rwin']);
+  const PUNCT_IDS = new Set(['comma', 'dot', 'slash', 'semi', 'quote', 'bslash', 'minus', 'equal', 'grave', 'lb', 'rb']);
+  const isCharacterKey = (id: string): boolean => {
+    if (/^[0-9a-z]$/.test(id)) return true;
+    if (id === 'space' || PUNCT_IDS.has(id)) return true;
+    return /^np_[0-9]$/.test(id) || ['np_dot', 'np_add', 'np_sub', 'np_mul', 'np_div'].includes(id);
+  };
+  window.addEventListener('blur', () => heldShortcutMods.clear());
+
   const STATS_POS_KEY = 'kurocat.typing-stats.pos';
   const applyStatsPosition = (): void => {
     if (!typingStatsEl) return;
@@ -1243,10 +1254,21 @@ async function bootstrap(): Promise<void> {
         }
         if (active3d && engine3d) engine3d.onKeyDown(p.vk, p.repeat);
         else engine.onKeyDown(p.vk, p.repeat);
-        // 打字统计：跳过自动重复、隐私输入（密码框）与修饰键
-        if (!p.repeat && !privacyActive && TypingStats.isCountableVk(p.vk)) typingStats.record();
+        // 打字统计：只统计能产生字符的键；退格回退；快捷键组合不计
+        {
+          const keySpec = resolveKeyByVk(p.vk, settings.keyboardLayout);
+          if (keySpec && SHORTCUT_MOD_IDS.has(keySpec.id)) heldShortcutMods.add(keySpec.id);
+          if (!p.repeat && !privacyActive && keySpec) {
+            if (keySpec.id === 'bs') typingStats.record(-1);
+            else if (heldShortcutMods.size === 0 && isCharacterKey(keySpec.id)) typingStats.record(1);
+          }
+        }
         break;
       case 'keyUp':
+        {
+          const upSpec = resolveKeyByVk(p.vk, settings.keyboardLayout);
+          if (upSpec && SHORTCUT_MOD_IDS.has(upSpec.id)) heldShortcutMods.delete(upSpec.id);
+        }
         if (active3d || tailPickerOpen) engine3d?.onKeyUp(p.vk);
         if (!active3d) {
           engine.onKeyUp(p.vk);

@@ -89,20 +89,25 @@ export class TypingStats {
     });
   }
 
-  /** 记录一次有效击键。调用方负责过滤修饰键与自动重复。 */
-  record(now = Date.now()): void {
+  /**
+   * 记录一次字符变化。
+   * delta = +1 表示敲出一个字符，-1 表示退格删掉一个字符。
+   * 退格只回退计数、不进速度窗口，且不会让今日字数变成负数。
+   */
+  record(delta: 1 | -1 = 1, now = Date.now()): void {
     this.rollover(new Date(now));
-    this.state.today += 1;
+    if (delta > 0) {
+      this.state.today += 1;
+      this.stamps.push(now);
+      this.prune(now);
+    } else if (this.state.today > 0) {
+      this.state.today -= 1;
+    } else {
+      return;
+    }
     this.state.history[this.state.day] = this.state.today;
-    this.stamps.push(now);
-    this.prune(now);
     this.dirty = true;
     this.scheduleFlush();
-  }
-
-  /** 判断某个虚拟键码是否值得计数 */
-  static isCountableVk(vk: number): boolean {
-    return !IGNORED_VKS.has(vk);
   }
 
   snapshot(now = Date.now()): TypingStatsSnapshot {
