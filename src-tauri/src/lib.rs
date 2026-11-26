@@ -270,6 +270,7 @@ pub struct AppState {
     pub mcp_enabled: Arc<AtomicBool>,
     pub update_banner_open: Arc<AtomicBool>,
     pub paused_guard: Arc<AtomicBool>,
+    pet_mask: Arc<Mutex<Option<PetMask>>>,
 }
 
 /// Shared Chromium / WebView2 lean runtime flags.
@@ -354,6 +355,65 @@ struct TailPickerBounds {
     toolbar: [f64; 4],
     keyboard: [f64; 4],
     close_button: [f64; 4],
+}
+
+/// 前端推上来的实时轮廓位图。
+///
+/// 由渲染进程把当前画布缩成 N×N 网格、按 alpha 阈值转成位图后推送，
+/// 主进程据此判断「光标是否落在可见像素上」。相比写死的几何常量，
+/// 这样换任何皮肤 / 缩放 / 动画姿态都自动适配。
+struct PetMask {
+    size: u32,
+    bits: Vec<u8>,
+    at: Instant,
+}
+
+impl PetMask {
+    /// 掩码有效期：前端 200ms 推一次，超过这个时间视为失效（回退几何判定）
+    const TTL: Duration = Duration::from_secs(2);
+
+    fn fresh(&self) -> bool {
+        self.at.elapsed() < Self::TTL
+    }
+
+    /// 查表，带一圈膨胀容忍阈值边缘的抖动
+    fn hit(&self, rx: f64, ry: f64) -> bool {
+        let n = self.size as usize;
+        if n == 0 || self.bits.len() < (n * n + 7) / 8 {
+            return false;
+        }
+        let gx = (rx.clamp(0.0, 0.999_9) * n as f64) as i32;
+        let gy = (ry.clamp(0.0, 0.999_9) * n as f64) as i32;
+        for dy in -1..=1 {
+            for dx in -1..=1 {
+                let x = gx + dx;
+                let y = gy + dy;
+                if x < 0 || y < 0 || x >= n as i32 || y >= n as i32 {
+                    continue;
+                }
+                let idx = y as usize * n + x as usize;
+                if self.bits[idx >> 3] & (1 << (idx & 7)) != 0 {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+
+/// 前端推送实时轮廓掩码。`size == 0` 或 `bits` 为空表示清空（主进程回退几何判定）。
+#[tauri::command]
+fn set_pet_mask(state: State<'_, AppState>, bits: Vec<u8>, size: u32) {
+    let mut guard = state.pet_mask.lock().unwrap();
+    if size == 0 || bits.is_empty() {
+        *guard = None;
+    } else {
+        *guard = Some(PetMask {
+            size,
+            bits,
+            at: Instant::now(),
+        });
+    }
 }
 
 #[tauri::command]
@@ -1916,6 +1976,7 @@ fn start_hit_test_loop(
     paused_guard: Arc<AtomicBool>,
 ) {
     let tail_picker_bounds = app.state::<AppState>().tail_picker_bounds.clone();
+    let pet_mask = app.state::<AppState>().pet_mask.clone();
     std::thread::spawn(move || {
         let mut last_ignore: Option<bool> = None;
         let mut last_cursor: (i32, i32) = (i32::MIN, i32::MIN);
@@ -2126,10 +2187,28 @@ fn start_hit_test_loop(
             let pet_ry = (ry - pet_y0) / pet_h_frac;
             let inside_pet = pet_rx >= 0.0 && pet_rx <= 1.0 && pet_ry >= 0.0 && pet_ry <= 1.0;
 
-            let (over_interactive, raw_over_cat) = if inside_pet {
+            let geometry = if inside_pet {
                 is_over_interactive_silhouette(pet_rx, pet_ry, is_108)
             } else {
                 (false, false)
+            };
+            // 前端推上来的实时轮廓优先：读的是当前帧实际画出的像素，
+            // 换皮肤（大肥鱼/鲸鱼娘等）、改缩放、换动画姿态都自动适配，不再依赖写死的几何。
+            // 掩码过期或从没收到过（例如 WebGL 读不回来）时回退几何判定。
+            let mask_hit = if inside {
+                pet_mask
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .filter(|m| m.fresh())
+                    .map(|m| m.hit(rx, ry))
+            } else {
+                None
+            };
+            let (over_interactive, raw_over_cat) = match mask_hit {
+                // 撸猫范围仍用几何椭圆：尾巴/键盘上不该触发踩奶动作
+                Some(hit) => (hit, geometry.1),
+                None => geometry,
             };
             // 悬停淡出：鼠标停在猫身上超过 350ms 就淡化并让出点击，移开立即恢复。
             // 快速点击（不足 350ms）仍然可以撸猫。
@@ -2840,6 +2919,7 @@ pub fn run() {
             mcp_enabled,
             update_banner_open,
             paused_guard,
+            pet_mask: Arc::new(Mutex::new(None)),
         })
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -3059,6 +3139,7 @@ pub fn run() {
             set_dragging,
             start_pet_drag,
             set_update_banner_open,
+            set_pet_mask,
             is_win7_ulw_mode,
             win7_present_frame,
             win7_sync_overlay,

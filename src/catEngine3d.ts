@@ -746,6 +746,8 @@ export class KuroCatEngine3D {
   };
 
   private rafId: number | null = null;
+  /** 渲染完成后的回调（同一帧内），用于采样画布 alpha 做实时轮廓判定 */
+  public onAfterRender: (() => void) | null = null;
   private idleTimer: number | null = null;
   private isIdlePacing = false;
   private lastFrameMs = 0;
@@ -1833,6 +1835,8 @@ export class KuroCatEngine3D {
     this.lastFrameMs = nowMs;
     this.update(dt);
     this.renderer.render(this.scene, this.camera);
+    // WebGL 画布离开本帧会被清空，实时轮廓采样必须在这里（同一帧内）完成
+    this.onAfterRender?.();
 
     if (this.rafId !== frameId) return;
 

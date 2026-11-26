@@ -10,6 +10,7 @@ import {
 } from './catEngine';
 import { catAudio } from './audio';
 import { TypingStats } from './typingStats';
+import { SilhouetteSampler } from './silhouette';
 import { AgentCompanionController, type AgentCompanionEvent } from './agentCompanion';
 import { DEFAULT_BUILTIN_CATS, type CatSkinConfig } from './catSkins';
 import {
@@ -193,6 +194,15 @@ const engine = new KuroCatEngine(canvas);
 engine.onDeepSleep = () => {
   void invoke('trim_idle_memory').catch(() => {});
 };
+
+// 实时轮廓采样：悬停让位与点击命中改为读「当前帧实际画出来的像素」，
+// 换皮肤（大肥鱼、鲸鱼娘…）、改缩放、换姿态都不需要再动几何常量。
+const silhouetteSampler = new SilhouetteSampler(['#typing-stats', '#update-toast']);
+window.setInterval(() => {
+  // 3D 模式交给引擎的渲染回调采样：WebGL 缓冲离开本帧会被清空，这里读会拿到空白
+  if (active3d) return;
+  silhouetteSampler.sample(canvas);
+}, 200);
 
 // Lazy-loaded Three.js 3D engine (NEVER imported when user stays in 2D mode -> +0 MB overhead!)
 let engine3d: KuroCatEngine3D | null = null;
@@ -406,6 +416,8 @@ function activateRenderEngine(): void {
         engine3d.onDeepSleep = () => {
           void invoke('trim_idle_memory').catch(() => {});
         };
+        // 同一帧内采样画布 alpha（此时 WebGL 缓冲仍然有效）
+        created.onAfterRender = () => silhouetteSampler.sample(canvas3d);
         activateRenderEngine();
       })
       .catch((err) => {
