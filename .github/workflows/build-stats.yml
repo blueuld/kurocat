@@ -2,8 +2,9 @@ name: build-windows-stats
 
 # 自定义构建（打字统计 / 悬停淡出等补丁）的 Windows x64 打包流程。
 # - 版本号取自 src-tauri/tauri.conf.json，产物命名为 KuroCat-<版本>-windows-x64.exe
-# - 以 v<版本> 发布正式 Release，应用内「检查更新」直接指向本仓库的 latest
-# - 构建失败时把 build.log 也发布出来，便于排查
+# - 以 v<版本> 发布正式 Release，应用内「检查更新」读取其中的 latest.json
+# - latest.json 走 /releases/latest/download/ 普通重定向，不消耗 GitHub API 匿名配额
+# - 构建失败时把 build.log 发到 build-log 这个预发布 Release，便于排查
 
 on:
   push:
@@ -78,6 +79,32 @@ jobs:
           Get-Item "KuroCat-$v-windows-x64.exe" | Select-Object Name, Length
           (Get-FileHash "KuroCat-$v-windows-x64.exe" -Algorithm SHA256).Hash
 
+      - name: Generate update manifest
+        if: steps.build.outcome == 'success'
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          $asset = "KuroCat-$v-windows-x64.exe"
+          $sha = (Get-FileHash $asset -Algorithm SHA256).Hash.ToLower()
+          $size = (Get-Item $asset).Length
+          $repo = "${{ github.repository }}"
+          $manifest = [ordered]@{
+            tag_name = "v$v"
+            name     = "KuroCat v$v custom build"
+            html_url = "https://github.com/$repo/releases/tag/v$v"
+            body     = "typing stats / hover fade patches"
+            assets   = @(
+              [ordered]@{
+                name                 = $asset
+                browser_download_url = "https://github.com/$repo/releases/download/v$v/$asset"
+                size                 = $size
+                digest               = "sha256:$sha"
+              }
+            )
+          }
+          $manifest | ConvertTo-Json -Depth 6 | Set-Content -Path latest.json -Encoding utf8
+          Get-Content latest.json
+
       - name: Upload artifact
         if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
@@ -98,9 +125,11 @@ jobs:
             已包含的补丁：
             - 打字统计（UI Automation 精确统计上屏字符，退格回退，支持位置选择与多语言）
             - 鼠标悬停淡出（可调触发延迟与不透明度）
-            - 更新检查指向本仓库
+            - 更新检查指向本仓库，并支持经系统代理下载
 
             安装：直接替换 `KuroCat.exe`，或在应用内点「检查更新」自动升级。
-          files: KuroCat-*-windows-x64.exe
+          files: |
+            KuroCat-*-windows-x64.exe
+            latest.json
           prerelease: false
           draft: false

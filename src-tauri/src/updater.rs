@@ -7,8 +7,11 @@ use tauri::{AppHandle, Emitter};
 // 官方上游的 Release 不包含打字统计等补丁，误更新会覆盖掉这些功能。
 const REPO_API_LATEST: &str = "https://api.github.com/repos/blueuld/kurocat/releases/latest";
 const REPO_RELEASES_PAGE: &str = "https://github.com/blueuld/kurocat/releases/latest";
-// 主源与兜底源一致：直接走 GitHub API，少一次无效请求
-const QIANYI_API_LATEST: &str = "https://api.github.com/repos/blueuld/kurocat/releases/latest";
+// 主源：Release 里随附的 latest.json 资产。
+// 走 /releases/latest/download/ 的普通 302 重定向，**不消耗 GitHub API 的匿名配额**
+// （60 次/小时/IP）。国内走共享出口代理时，API 极易被限流成 403，而这条路径不受影响。
+const MANIFEST_LATEST: &str =
+    "https://github.com/blueuld/kurocat/releases/latest/download/latest.json";
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -770,13 +773,13 @@ fn fetch_json_from_url(url: &str, accept: Option<&str>, timeout_ms: i32) -> Resu
 
 #[cfg(windows)]
 fn fetch_latest_release_json() -> Result<String, String> {
-    // Primary: fast domestic CDN mirror (no proxy needed, zero GitHub API rate limit)
-    if let Ok(text) = fetch_json_from_url(QIANYI_API_LATEST, Some("Accept: application/json\r\n"), 8_000) {
+    // 主源：Release 资产 latest.json（普通重定向，不占 GitHub API 配额）
+    if let Ok(text) = fetch_json_from_url(MANIFEST_LATEST, Some("Accept: application/json\r\n"), 12_000) {
         if serde_json::from_str::<GhRelease>(&text).is_ok() {
             return Ok(text);
         }
     }
-    // Fallback: official GitHub Releases API
+    // 兜底：GitHub Releases API（可能被匿名限流成 403）
     fetch_json_from_url(
         REPO_API_LATEST,
         Some("Accept: application/vnd.github+json\r\n"),
@@ -827,13 +830,13 @@ fn fetch_json_from_url(url: &str, accept: &str, connect_secs: &str, max_secs: &s
 
 #[cfg(not(windows))]
 fn fetch_latest_release_json() -> Result<String, String> {
-    // Primary: fast domestic CDN mirror (no proxy needed, zero GitHub API rate limit)
-    if let Ok(text) = fetch_json_from_url(QIANYI_API_LATEST, "Accept: application/json", "5", "9") {
+    // 主源：Release 资产 latest.json（普通重定向，不占 GitHub API 配额）
+    if let Ok(text) = fetch_json_from_url(MANIFEST_LATEST, "Accept: application/json", "5", "9") {
         if serde_json::from_str::<GhRelease>(&text).is_ok() {
             return Ok(text);
         }
     }
-    // Fallback: official GitHub Releases API
+    // 兜底：GitHub Releases API（可能被匿名限流成 403）
     fetch_json_from_url(REPO_API_LATEST, "Accept: application/vnd.github+json", "10", "20")
 }
 
