@@ -1238,6 +1238,15 @@ async function bootstrap(): Promise<void> {
     window.addEventListener('focus', applyStatsPosition);
   }
 
+  let uiaTextMode = false;
+  await listen<boolean>('kuro-text-mode', (ev) => {
+    uiaTextMode = Boolean(ev.payload);
+  });
+  await listen<number>('kuro-text-delta', (ev) => {
+    const delta = Number(ev.payload);
+    if (Number.isFinite(delta) && delta !== 0) typingStats.record(delta);
+  });
+
   await listen<InputEvent>('kuro-input', (ev) => {
     const p = ev.payload;
     switch (p.kind) {
@@ -1258,7 +1267,7 @@ async function bootstrap(): Promise<void> {
         {
           const keySpec = resolveKeyByVk(p.vk, settings.keyboardLayout);
           if (keySpec && SHORTCUT_MOD_IDS.has(keySpec.id)) heldShortcutMods.add(keySpec.id);
-          if (!p.repeat && !privacyActive && keySpec) {
+          if (!p.repeat && !privacyActive && keySpec && !uiaTextMode) {
             if (keySpec.id === 'bs') typingStats.record(-1);
             else if (heldShortcutMods.size === 0 && isCharacterKey(keySpec.id)) typingStats.record(1);
           }

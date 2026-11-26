@@ -1,7 +1,7 @@
 name: build-windows-stats
 
-# 只为「打字统计」补丁构建 Windows x64 单文件 exe。
-# 产物同时上传为 Actions artifact 并附到 stats-build 这个预发布 Release 上，便于直接下载。
+# 只为「字数统计」补丁构建 Windows x64 单文件 exe。
+# 成功：产物挂到 stats-build Release；失败：把 build.log 也挂上去，方便排查。
 
 on:
   push:
@@ -37,15 +37,38 @@ jobs:
         run: npm ci
 
       - name: Build Tauri app (Windows x64, no bundler)
-        run: npm run tauri -- build --no-bundle
+        id: build
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          npm run tauri -- build --no-bundle *>&1 | Tee-Object -FilePath build.log
+          exit $LASTEXITCODE
+
+      - name: Publish build log on failure
+        if: steps.build.outcome == 'failure'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: stats-build
+          name: KuroCat + 打字统计（自动构建）
+          body: |
+            构建失败，附 build.log 便于排查。
+          files: build.log
+          prerelease: true
+          draft: false
+
+      - name: Fail job when build failed
+        if: steps.build.outcome == 'failure'
+        run: exit 1
 
       - name: Show built file
+        if: steps.build.outcome == 'success'
         shell: pwsh
         run: |
           Get-Item src-tauri/target/release/KuroCat.exe | Select-Object Name, Length, LastWriteTime
           (Get-FileHash src-tauri/target/release/KuroCat.exe -Algorithm SHA256).Hash
 
       - name: Upload artifact
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: KuroCat-stats-windows-x64
@@ -53,13 +76,15 @@ jobs:
           if-no-files-found: error
 
       - name: Publish to release
+        if: steps.build.outcome == 'success'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: stats-build
           name: KuroCat + 打字统计（自动构建）
           body: |
-            基于 KuroCat v5.1.2 源码 + 本地「打字统计」补丁（今日字数 / 每分钟字数）自动构建。
+            基于 KuroCat v5.1.2 源码 + 本地补丁自动构建。
 
+            统计口径：通过 UI Automation 比对焦点输入框长度，只统计实际上屏的字符（含输入法确认后的字），退格自动回退。
             直接替换 `KuroCat.exe` 即可，配置与设置不受影响。
           files: src-tauri/target/release/KuroCat.exe
           prerelease: true

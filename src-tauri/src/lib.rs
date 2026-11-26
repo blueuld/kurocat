@@ -11,6 +11,7 @@ mod mcp;
 mod obs;
 mod privacy;
 mod tray;
+mod typing_text;
 mod updater;
 #[cfg(windows)]
 mod win7_layered;
@@ -2892,6 +2893,7 @@ pub fn run() {
                 settings_for_setup.clone(),
                 paused_for_setup.clone(),
             );
+            typing_text::start_typing_text_watcher(handle.clone());
             game_detect::start_game_detection_watcher(
                 handle.clone(),
                 settings_for_setup.clone(),

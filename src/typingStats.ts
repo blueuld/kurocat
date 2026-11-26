@@ -94,14 +94,17 @@ export class TypingStats {
    * delta = +1 表示敲出一个字符，-1 表示退格删掉一个字符。
    * 退格只回退计数、不进速度窗口，且不会让今日字数变成负数。
    */
-  record(delta: 1 | -1 = 1, now = Date.now()): void {
+  record(delta: number = 1, now = Date.now()): void {
     this.rollover(new Date(now));
-    if (delta > 0) {
-      this.state.today += 1;
-      this.stamps.push(now);
+    const step = Math.trunc(delta);
+    if (!step) return;
+    if (step > 0) {
+      this.state.today += step;
+      // 速度窗口按字符数计权重，单次最多记 200 个时间戳防止极端值撑爆数组
+      for (let i = 0; i < Math.min(step, 200); i += 1) this.stamps.push(now);
       this.prune(now);
     } else if (this.state.today > 0) {
-      this.state.today -= 1;
+      this.state.today = Math.max(0, this.state.today + step);
     } else {
       return;
     }
