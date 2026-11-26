@@ -2116,7 +2116,8 @@ fn start_hit_test_loop(
             };
             // 悬停淡出：鼠标停在猫身上超过 350ms 就淡化并让出点击，移开立即恢复。
             // 快速点击（不足 350ms）仍然可以撸猫。
-            if hover_fade && raw_over_cat && !is_drag && !effective_locked {
+            // 注意：锁定穿透时也要淡化——视觉让位与点击穿透是两回事
+            if hover_fade && raw_over_cat && !is_drag {
                 match hover_since {
                     None => hover_since = Some(Instant::now()),
                     Some(started) if started.elapsed() >= Duration::from_millis(hover_delay as u64) => {
