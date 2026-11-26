@@ -1,0 +1,66 @@
+name: build-windows-stats
+
+# 只为「打字统计」补丁构建 Windows x64 单文件 exe。
+# 产物同时上传为 Actions artifact 并附到 stats-build 这个预发布 Release 上，便于直接下载。
+
+on:
+  push:
+    branches:
+      - stats-patch
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Tauri app (Windows x64, no bundler)
+        run: npm run tauri -- build --no-bundle
+
+      - name: Show built file
+        shell: pwsh
+        run: |
+          Get-Item src-tauri/target/release/KuroCat.exe | Select-Object Name, Length, LastWriteTime
+          (Get-FileHash src-tauri/target/release/KuroCat.exe -Algorithm SHA256).Hash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KuroCat-stats-windows-x64
+          path: src-tauri/target/release/KuroCat.exe
+          if-no-files-found: error
+
+      - name: Publish to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: stats-build
+          name: KuroCat + 打字统计（自动构建）
+          body: |
+            基于 KuroCat v5.1.2 源码 + 本地「打字统计」补丁（今日字数 / 每分钟字数）自动构建。
+
+            直接替换 `KuroCat.exe` 即可，配置与设置不受影响。
+          files: src-tauri/target/release/KuroCat.exe
+          prerelease: true
+          draft: false
