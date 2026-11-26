@@ -1903,6 +1903,10 @@ fn start_hit_test_loop(
         let mut last_ignore: Option<bool> = None;
         let mut last_cursor: (i32, i32) = (i32::MIN, i32::MIN);
         let mut last_over_cat = false;
+        let mut hover_since: Option<Instant> = None;
+        let mut hover_hidden = false;
+        let mut last_hover_hidden = false;
+        let mut last_hover_opacity = -1.0f32;
         let mut last_inside_pet = false;
         let mut last_alt_override = false;
         let mut last_effective_locked = false;
@@ -1978,13 +1982,16 @@ fn start_hit_test_loop(
             let rx = (cx - win_x) as f64 / w;
             let ry = (cy - win_y) as f64 / h;
             let inside = rx >= 0.0 && rx <= 1.0 && ry >= 0.0 && ry <= 1.0;
-            let (locked, always_on_top, is_108, cur_scale) = {
+            let (locked, always_on_top, is_108, cur_scale, hover_fade, hover_delay, hover_opacity) = {
                 let s = settings.lock().unwrap();
                 (
                     s.click_through_locked,
                     s.always_on_top,
                     s.keyboard_layout == "108",
                     s.scale.clamp(0.20, 1.50),
+                    s.hover_fade,
+                    s.hover_fade_delay_ms.clamp(80, 3000),
+                    s.hover_fade_opacity.clamp(0.02, 1.0),
                 )
             };
             let layout_str = if is_108 { "108" } else { "65" };
@@ -2107,9 +2114,33 @@ fn start_hit_test_loop(
             } else {
                 (false, false)
             };
+            // 悬停淡出：鼠标停在猫身上超过 350ms 就淡化并让出点击，移开立即恢复。
+            // 快速点击（不足 350ms）仍然可以撸猫。
+            if hover_fade && raw_over_cat && !is_drag && !effective_locked {
+                match hover_since {
+                    None => hover_since = Some(Instant::now()),
+                    Some(started) if started.elapsed() >= Duration::from_millis(hover_delay as u64) => {
+                        hover_hidden = true
+                    }
+                    _ => {}
+                }
+            } else {
+                hover_since = None;
+                hover_hidden = false;
+            }
+
+            if hover_hidden != last_hover_hidden || (hover_hidden && (hover_opacity - last_hover_opacity).abs() > 0.001) {
+                last_hover_hidden = hover_hidden;
+                last_hover_opacity = hover_opacity;
+                let _ = app.emit(
+                    "kuro-hover-fade",
+                    serde_json::json!({ "active": hover_hidden, "opacity": hover_opacity }),
+                );
+            }
+
             // While click-through is locked (and Alt is not held), suppress petting hover so users
             // aren't misled by squinting eyes when the cat is intentionally click-through.
-            let over_cat = if effective_locked { false } else { raw_over_cat };
+            let over_cat = if effective_locked || hover_hidden { false } else { raw_over_cat };
 
             #[cfg(windows)]
             if is_win7_ulw {
@@ -2123,6 +2154,8 @@ fn start_hit_test_loop(
 
             let should_ignore = if is_drag || over_banner || over_tail_picker {
                 false
+            } else if hover_hidden {
+                true
             } else if effective_locked {
                 true
             } else if is_win7_ulw {

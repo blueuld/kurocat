@@ -1107,3 +1107,15 @@ html.win7-ulw-mode .floating-side-menu {
 .typing-stats.pos-bottom { bottom: 6px; left: 50%; transform: translateX(-50%); }
 .typing-stats.pos-tl { top: 8px; left: 8px; }
 .typing-stats.pos-tr { top: 8px; right: 8px; }
+
+/* ── 悬停淡出（本地补丁）：鼠标停在猫身上时让位给下面的窗口 ── */
+#pet-canvas,
+#pet-canvas-3d,
+#typing-stats {
+  transition: opacity 0.12s ease;
+}
+body.pet-hover-fade #pet-canvas,
+body.pet-hover-fade #pet-canvas-3d,
+body.pet-hover-fade #typing-stats {
+  opacity: var(--pet-fade-opacity, 0.12);
+}

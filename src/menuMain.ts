@@ -19,6 +19,9 @@ interface AppSettings {
   scale: number;
   alwaysOnTop: boolean;
   clickThroughLocked: boolean;
+  hoverFade: boolean;
+  hoverFadeDelayMs: number;
+  hoverFadeOpacity: number;
   showKeyBubbles: boolean;
   soundEnabled: boolean;
   autostart: boolean;
@@ -67,6 +70,9 @@ let settings: AppSettings = {
   scale: 1,
   alwaysOnTop: true,
   clickThroughLocked: false,
+  hoverFade: true,
+  hoverFadeDelayMs: 350,
+  hoverFadeOpacity: 0.12,
   showKeyBubbles: true,
   soundEnabled: true,
   autostart: false,
@@ -279,6 +285,20 @@ function syncUI(): void {
   document.querySelectorAll<HTMLButtonElement>('[data-rendermode]').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.rendermode === renderMode);
   });
+  document.querySelectorAll<HTMLButtonElement>('[data-hoverfade]').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.hoverfade === (settings.hoverFade ? '1' : '0'));
+  });
+  const delaySlider = document.getElementById('hover-fade-delay') as HTMLInputElement | null;
+  const delayValue = document.getElementById('hover-fade-delay-value');
+  const opacitySlider = document.getElementById('hover-fade-opacity') as HTMLInputElement | null;
+  const opacityValue = document.getElementById('hover-fade-opacity-value');
+  const delayMs = Math.max(80, Math.min(3000, Number(settings.hoverFadeDelayMs) || 350));
+  const fadeOpacity = Math.max(0.02, Math.min(1, Number(settings.hoverFadeOpacity) || 0.12));
+  if (delaySlider && !delaySlider.matches(':active')) delaySlider.value = String(delayMs);
+  if (delayValue) delayValue.textContent = `${delayMs} ms`;
+  if (opacitySlider && !opacitySlider.matches(':active')) opacitySlider.value = String(Math.round(fadeOpacity * 100));
+  if (opacityValue) opacityValue.textContent = `${Math.round(fadeOpacity * 100)}%`;
+
   const statsPos = localStorage.getItem('kurocat.typing-stats.pos') || 'bottom';
   document.querySelectorAll<HTMLButtonElement>('[data-statspos]').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.statspos === statsPos);
@@ -497,7 +517,7 @@ async function bootstrap(): Promise<void> {
     }
 
     const target = (e.target as HTMLElement).closest<HTMLElement>(
-      '[data-action], [data-breed], [data-rendermode], [data-collar], [data-headphonemode], [data-kblayout], [data-kborient], [data-tailmode], [data-fpscap], [data-lang], [data-statspos]',
+      '[data-action], [data-breed], [data-rendermode], [data-collar], [data-headphonemode], [data-kblayout], [data-kborient], [data-tailmode], [data-fpscap], [data-lang], [data-statspos], [data-hoverfade]',
     );
     if (!target) return;
 
@@ -517,6 +537,12 @@ async function bootstrap(): Promise<void> {
       const headphoneAttr = target.dataset.headphonemode;
       if (headphoneAttr === 'auto' || headphoneAttr === 'on' || headphoneAttr === 'off') {
         void applySettingsPatch({ headphoneMode: headphoneAttr });
+        return;
+      }
+
+      const hoverFadeAttr = target.dataset.hoverfade;
+      if (hoverFadeAttr === '1' || hoverFadeAttr === '0') {
+        void applySettingsPatch({ hoverFade: hoverFadeAttr === '1' });
         return;
       }
 
@@ -703,6 +729,27 @@ async function bootstrap(): Promise<void> {
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeMenu();
   });
+
+  const delaySliderEl = document.getElementById('hover-fade-delay') as HTMLInputElement | null;
+  const opacitySliderEl = document.getElementById('hover-fade-opacity') as HTMLInputElement | null;
+  if (delaySliderEl) {
+    delaySliderEl.addEventListener('input', () => {
+      const el = document.getElementById('hover-fade-delay-value');
+      if (el) el.textContent = `${Number(delaySliderEl.value)} ms`;
+    });
+    delaySliderEl.addEventListener('change', () => {
+      void applySettingsPatch({ hoverFadeDelayMs: Number(delaySliderEl.value) });
+    });
+  }
+  if (opacitySliderEl) {
+    opacitySliderEl.addEventListener('input', () => {
+      const el = document.getElementById('hover-fade-opacity-value');
+      if (el) el.textContent = `${Number(opacitySliderEl.value)}%`;
+    });
+    opacitySliderEl.addEventListener('change', () => {
+      void applySettingsPatch({ hoverFadeOpacity: Number(opacitySliderEl.value) / 100 });
+    });
+  }
 
   if (scaleSliderEl) {
     scaleSliderEl.addEventListener('pointerdown', () => {

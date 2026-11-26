@@ -37,6 +37,36 @@
             </div>
           </div>
 
+          <div class="menu-scale-row" id="hover-fade-row">
+            <span class="menu-scale-label" data-i18n="menu.hover_fade_label">悬停淡出（让出被遮挡区域）</span>
+            <div class="kb-pills" id="hover-fade-pills">
+              <button class="kb-pill active" data-hoverfade="1" data-i18n="menu.hover_fade_on" type="button">开</button>
+              <button class="kb-pill" data-hoverfade="0" data-i18n="menu.hover_fade_off" type="button">关</button>
+            </div>
+          </div>
+
+          <div class="menu-scale-row" id="hover-fade-delay-row">
+            <div class="scale-header">
+              <span class="menu-scale-label" data-i18n="menu.hover_fade_delay_label">悬停多久后让位</span>
+              <span class="scale-value-btn" id="hover-fade-delay-value">350 ms</span>
+            </div>
+            <div class="scale-slider-wrap">
+              <input type="range" id="hover-fade-delay" class="scale-slider" min="100" max="1500" step="50" value="350" />
+              <div class="scale-ticks"><span>0.1s</span><span class="scale-tick-mid">0.35s</span><span>1.5s</span></div>
+            </div>
+          </div>
+
+          <div class="menu-scale-row" id="hover-fade-opacity-row">
+            <div class="scale-header">
+              <span class="menu-scale-label" data-i18n="menu.hover_fade_opacity_label">悬停时不透明度</span>
+              <span class="scale-value-btn" id="hover-fade-opacity-value">12%</span>
+            </div>
+            <div class="scale-slider-wrap">
+              <input type="range" id="hover-fade-opacity" class="scale-slider" min="5" max="100" step="5" value="12" />
+              <div class="scale-ticks"><span>5%</span><span class="scale-tick-mid">12%</span><span>100%</span></div>
+            </div>
+          </div>
+
           <div class="menu-scale-row" id="stats-pos-row">
             <span class="menu-scale-label" data-i18n="menu.stats_pos_label">字数统计位置</span>
             <div class="kb-pills" id="stats-pos-pills">

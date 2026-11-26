@@ -39,6 +39,9 @@ interface AppSettings {
   scale: number;
   alwaysOnTop: boolean;
   clickThroughLocked: boolean;
+  hoverFade: boolean;
+  hoverFadeDelayMs: number;
+  hoverFadeOpacity: number;
   showKeyBubbles: boolean;
   soundEnabled: boolean;
   autostart: boolean;
@@ -139,6 +142,9 @@ let settings: AppSettings = {
   scale: 1,
   alwaysOnTop: true,
   clickThroughLocked: false,
+  hoverFade: true,
+  hoverFadeDelayMs: 350,
+  hoverFadeOpacity: 0.12,
   showKeyBubbles: true,
   soundEnabled: true,
   autostart: false,
@@ -1237,6 +1243,15 @@ async function bootstrap(): Promise<void> {
     });
     window.addEventListener('focus', applyStatsPosition);
   }
+
+  await listen<{ active?: boolean; opacity?: number }>('kuro-hover-fade', (ev) => {
+    const payload = ev.payload ?? {};
+    const opacity = Number(payload.opacity);
+    if (Number.isFinite(opacity)) {
+      document.documentElement.style.setProperty('--pet-fade-opacity', String(opacity));
+    }
+    document.body.classList.toggle('pet-hover-fade', Boolean(payload.active));
+  });
 
   let uiaTextMode = false;
   await listen<boolean>('kuro-text-mode', (ev) => {

@@ -7,6 +7,18 @@ fn default_cat_breed() -> String {
     "black".to_string()
 }
 
+fn default_hover_fade() -> bool {
+    true
+}
+
+fn default_hover_fade_delay() -> u32 {
+    350
+}
+
+fn default_hover_fade_opacity() -> f32 {
+    0.12
+}
+
 fn default_mcp_enabled() -> bool {
     true
 }
@@ -172,6 +184,12 @@ pub struct AppSettings {
     pub scale: f64,
     pub always_on_top: bool,
     pub click_through_locked: bool,
+    #[serde(default = "default_hover_fade")]
+    pub hover_fade: bool,
+    #[serde(default = "default_hover_fade_delay")]
+    pub hover_fade_delay_ms: u32,
+    #[serde(default = "default_hover_fade_opacity")]
+    pub hover_fade_opacity: f32,
     pub show_key_bubbles: bool,
     pub sound_enabled: bool,
     pub autostart: bool,
@@ -221,6 +239,9 @@ impl Default for AppSettings {
             scale: 1.0,
             always_on_top: true,
             click_through_locked: false,
+            hover_fade: true,
+            hover_fade_delay_ms: 350,
+            hover_fade_opacity: 0.12,
             show_key_bubbles: true,
             sound_enabled: true,
             autostart: false,
