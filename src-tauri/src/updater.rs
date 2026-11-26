@@ -399,7 +399,8 @@ mod winhttp_client {
         WinHttpCloseHandle, WinHttpConnect, WinHttpOpen, WinHttpOpenRequest,
         WinHttpQueryDataAvailable, WinHttpQueryHeaders, WinHttpReadData, WinHttpReceiveResponse,
         WinHttpSendRequest, WinHttpSetOption, WinHttpSetTimeouts,
-        WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_FLAG_SECURE,
+        WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+        WINHTTP_ACCESS_TYPE_NAMED_PROXY, WINHTTP_FLAG_SECURE,
         WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2, WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3,
         WINHTTP_OPTION_SECURE_PROTOCOLS, WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE,
     };
@@ -420,9 +421,125 @@ mod winhttp_client {
         s.encode_utf16().chain(std::iter::once(0)).collect()
     }
 
+    /// 读取用户级（WinINET）代理配置。
+    ///
+    /// 为什么不直接靠 `WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY`：
+    /// 它只认 `netsh winhttp set proxy` 设置的**机器级**代理，不读 HKCU 里
+    /// 「设置 → 网络和 Internet → 代理」那一份。而国内用户（Clash / v2ray 等）
+    /// 通常只配了后者，于是 WinHTTP 静默走直连，GitHub 的大文件下到几百 KB 就断流，
+    /// 被误判为「下载到的更新包不完整」。
+    fn system_proxy() -> Option<String> {
+        use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER};
+        // RegGetValueW 的 dwFlags 取值（本地定义，避免依赖常量导出差异）
+        const RRF_RT_REG_SZ: u32 = 0x0000_0002;
+        const RRF_RT_REG_DWORD: u32 = 0x0000_0010;
+        const KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
+
+        let key_w = to_wide(KEY);
+
+        let name_w = to_wide("ProxyEnable");
+        let mut enabled: u32 = 0;
+        let mut size = std::mem::size_of::<u32>() as u32;
+        let rc = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                key_w.as_ptr(),
+                name_w.as_ptr(),
+                RRF_RT_REG_DWORD,
+                null_mut(),
+                &mut enabled as *mut u32 as *mut c_void,
+                &mut size,
+            )
+        };
+        if rc != 0 || enabled == 0 {
+            return None;
+        }
+
+        let name_w = to_wide("ProxyServer");
+        let mut buf = [0u16; 512];
+        let mut size = (buf.len() * std::mem::size_of::<u16>()) as u32;
+        let rc = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                key_w.as_ptr(),
+                name_w.as_ptr(),
+                RRF_RT_REG_SZ,
+                null_mut(),
+                buf.as_mut_ptr() as *mut c_void,
+                &mut size,
+            )
+        };
+        if rc != 0 {
+            return None;
+        }
+        let len = buf.iter().position(|&ch| ch == 0).unwrap_or(0);
+        if len == 0 {
+            return None;
+        }
+        normalize_proxy(&String::from_utf16_lossy(&buf[..len]))
+    }
+
+    /// 把注册表里的 ProxyServer 归一成 `host:port`。
+    ///
+    /// ProxyServer 有两种写法：`127.0.0.1:7890`，或
+    /// `http=127.0.0.1:7890;https=127.0.0.1:7890`。纯 SOCKS 代理 WinHTTP 不支持，
+    /// 直接返回 None（回退直连，不对用户撒谎说走了代理）。
+    fn normalize_proxy(raw: &str) -> Option<String> {
+        let raw = raw.trim();
+        if raw.is_empty() {
+            return None;
+        }
+
+        let picked = if raw.contains('=') {
+            let mut http: Option<String> = None;
+            let mut https: Option<String> = None;
+            let mut has_http_family = false;
+            for part in raw.split(';') {
+                let mut kv = part.splitn(2, '=');
+                let key = kv.next().unwrap_or("").trim().to_ascii_lowercase();
+                let value = kv.next().unwrap_or("").trim();
+                if value.is_empty() {
+                    continue;
+                }
+                match key.as_str() {
+                    "http" => {
+                        http = Some(value.to_string());
+                        has_http_family = true;
+                    }
+                    "https" => {
+                        https = Some(value.to_string());
+                        has_http_family = true;
+                    }
+                    "socks" | "socks5" | "socks4" => {}
+                    _ => {}
+                }
+            }
+            if !has_http_family {
+                return None;
+            }
+            https.or(http)?
+        } else {
+            raw.to_string()
+        };
+
+        let host = picked
+            .trim()
+            .trim_start_matches("http://")
+            .trim_start_matches("https://")
+            .trim_end_matches('/')
+            .trim()
+            .to_string();
+        if host.is_empty() {
+            None
+        } else {
+            Some(host)
+        }
+    }
+
     /// Performs a native WinHTTP GET request (no PowerShell / curl child process),
-    /// streaming response chunks into `on_chunk`. Supports Win7 SP1 through Win11
-    /// and honors system / PAC proxies automatically.
+    /// streaming response chunks into `on_chunk`. Supports Win7 SP1 through Win11.
+    ///
+    /// 优先使用用户配置的系统代理；代理不可用时回退直连。
     pub fn get_stream(
         url: &str,
         user_agent: &str,
@@ -430,29 +547,73 @@ mod winhttp_client {
         receive_timeout_ms: i32,
         mut on_chunk: impl FnMut(&[u8]) -> Result<(), String>,
     ) -> Result<(), String> {
+        if let Some(proxy) = system_proxy() {
+            let mut received = 0usize;
+            let result = {
+                let mut counting = |chunk: &[u8]| -> Result<(), String> {
+                    received += chunk.len();
+                    on_chunk(chunk)
+                };
+                let result =
+                    get_stream_with(url, user_agent, extra_headers, receive_timeout_ms, Some(&proxy), &mut counting);
+                drop(counting);
+                result
+            };
+            // 一行数据都没收到说明是连接阶段失败（代理挂了/端口不对），
+            // 此时回退直连是安全的：不会产生重复内容。
+            if result.is_ok() || received > 0 {
+                return result;
+            }
+            return get_stream_with(url, user_agent, extra_headers, receive_timeout_ms, None, &mut on_chunk);
+        }
+        get_stream_with(url, user_agent, extra_headers, receive_timeout_ms, None, &mut on_chunk)
+    }
+
+    fn get_stream_with(
+        url: &str,
+        user_agent: &str,
+        extra_headers: Option<&str>,
+        receive_timeout_ms: i32,
+        proxy: Option<&str>,
+        on_chunk: &mut dyn FnMut(&[u8]) -> Result<(), String>,
+    ) -> Result<(), String> {
         let (is_https, host, port, path) = parse_http_url(url)?;
         let ua_w = to_wide(user_agent);
+        let proxy_w = proxy.map(to_wide);
 
-        // Win8.1/10/11: AUTOMATIC_PROXY reads user IE/system proxy & PAC automatically.
-        // Win7 SP1 fallback: DEFAULT_PROXY.
         let session_raw = unsafe {
-            let h = WinHttpOpen(
-                ua_w.as_ptr(),
-                WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
-                null(),
-                null(),
-                0,
-            );
-            if !h.is_null() {
-                h
-            } else {
-                WinHttpOpen(
+            let named = match &proxy_w {
+                Some(buf) => WinHttpOpen(
                     ua_w.as_ptr(),
-                    WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                    WINHTTP_ACCESS_TYPE_NAMED_PROXY,
+                    buf.as_ptr(),
+                    null(),
+                    0,
+                ),
+                None => null_mut(),
+            };
+            if !named.is_null() {
+                named
+            } else {
+                // 没有代理配置（或显式代理建立失败）：交给系统自动代理，再退回默认代理
+                let h = WinHttpOpen(
+                    ua_w.as_ptr(),
+                    WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
                     null(),
                     null(),
                     0,
-                )
+                );
+                if !h.is_null() {
+                    h
+                } else {
+                    WinHttpOpen(
+                        ua_w.as_ptr(),
+                        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                        null(),
+                        null(),
+                        0,
+                    )
+                }
             }
         };
         if session_raw.is_null() {
