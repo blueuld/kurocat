@@ -3,9 +3,12 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Emitter};
 
-const QIANYI_API_LATEST: &str = "https://qianyi.one/kurocat/releases/latest.json";
-const REPO_API_LATEST: &str = "https://api.github.com/repos/qianyiai/kurocat/releases/latest";
-const REPO_RELEASES_PAGE: &str = "https://github.com/qianyiai/kurocat/releases/latest";
+// 自定义构建：更新检查指向本仓库的正式 Release（blueuld/kurocat）。
+// 官方上游的 Release 不包含打字统计等补丁，误更新会覆盖掉这些功能。
+const REPO_API_LATEST: &str = "https://api.github.com/repos/blueuld/kurocat/releases/latest";
+const REPO_RELEASES_PAGE: &str = "https://github.com/blueuld/kurocat/releases/latest";
+// 主源与兜底源一致：直接走 GitHub API，少一次无效请求
+const QIANYI_API_LATEST: &str = "https://api.github.com/repos/blueuld/kurocat/releases/latest";
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 

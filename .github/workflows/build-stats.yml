@@ -1,7 +1,9 @@
 name: build-windows-stats
 
-# 只为「字数统计」补丁构建 Windows x64 单文件 exe。
-# 成功：产物挂到 stats-build Release；失败：把 build.log 也挂上去，方便排查。
+# 自定义构建（打字统计 / 悬停淡出等补丁）的 Windows x64 打包流程。
+# - 版本号取自 src-tauri/tauri.conf.json，产物命名为 KuroCat-<版本>-windows-x64.exe
+# - 以 v<版本> 发布正式 Release，应用内「检查更新」直接指向本仓库的 latest
+# - 构建失败时把 build.log 也发布出来，便于排查
 
 on:
   push:
@@ -36,6 +38,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Read app version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          Write-Output "version=$v" >> $env:GITHUB_OUTPUT
+
       - name: Build Tauri app (Windows x64, no bundler)
         id: build
         shell: pwsh
@@ -48,10 +57,10 @@ jobs:
         if: steps.build.outcome == 'failure'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: stats-build
-          name: KuroCat + 打字统计（自动构建）
+          tag_name: build-log
+          name: 构建日志
           body: |
-            构建失败，附 build.log 便于排查。
+            最近一次构建失败，附 build.log。
           files: build.log
           prerelease: true
           draft: false
@@ -60,32 +69,38 @@ jobs:
         if: steps.build.outcome == 'failure'
         run: exit 1
 
-      - name: Show built file
+      - name: Rename asset for updater
         if: steps.build.outcome == 'success'
         shell: pwsh
         run: |
-          Get-Item src-tauri/target/release/KuroCat.exe | Select-Object Name, Length, LastWriteTime
-          (Get-FileHash src-tauri/target/release/KuroCat.exe -Algorithm SHA256).Hash
+          $v = "${{ steps.ver.outputs.version }}"
+          Copy-Item src-tauri/target/release/KuroCat.exe "KuroCat-$v-windows-x64.exe"
+          Get-Item "KuroCat-$v-windows-x64.exe" | Select-Object Name, Length
+          (Get-FileHash "KuroCat-$v-windows-x64.exe" -Algorithm SHA256).Hash
 
       - name: Upload artifact
         if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: KuroCat-stats-windows-x64
-          path: src-tauri/target/release/KuroCat.exe
+          name: KuroCat-windows-x64
+          path: KuroCat-*-windows-x64.exe
           if-no-files-found: error
 
-      - name: Publish to release
+      - name: Publish release
         if: steps.build.outcome == 'success'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: stats-build
-          name: KuroCat + 打字统计（自动构建）
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: KuroCat v${{ steps.ver.outputs.version }}（自定义构建）
           body: |
-            基于 KuroCat v5.1.2 源码 + 本地补丁自动构建。
+            基于 KuroCat 源码 + 本地补丁构建，可直接在应用内「检查更新」升级。
 
-            统计口径：通过 UI Automation 比对焦点输入框长度，只统计实际上屏的字符（含输入法确认后的字），退格自动回退。
-            直接替换 `KuroCat.exe` 即可，配置与设置不受影响。
-          files: src-tauri/target/release/KuroCat.exe
-          prerelease: true
+            已包含的补丁：
+            - 打字统计（UI Automation 精确统计上屏字符，退格回退，支持位置选择与多语言）
+            - 鼠标悬停淡出（可调触发延迟与不透明度）
+            - 更新检查指向本仓库
+
+            安装：直接替换 `KuroCat.exe`，或在应用内点「检查更新」自动升级。
+          files: KuroCat-*-windows-x64.exe
+          prerelease: false
           draft: false
