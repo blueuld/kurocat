@@ -1425,10 +1425,21 @@ async function bootstrap(): Promise<void> {
   await listen<{ active?: boolean; opacity?: number }>('kuro-hover-fade', (ev) => {
     const payload = ev.payload ?? {};
     const opacity = Number(payload.opacity);
+    const active = Boolean(payload.active);
     if (Number.isFinite(opacity)) {
       document.documentElement.style.setProperty('--pet-fade-opacity', String(opacity));
     }
-    document.body.classList.toggle('pet-hover-fade', Boolean(payload.active));
+    document.body.classList.toggle('pet-hover-fade', active);
+    // 上游「不透明度」功能会直接写 canvas 的内联 style.opacity。这里同步接管
+    // 内联值：淡出时设成 fade 值，恢复时回到用户设置的基础不透明度，避免
+    // 淡出期间其他设置事件把内联值重置成 1（CSS 里的 !important 是最终兜底）。
+    if (active) {
+      const fade = Number.isFinite(opacity) ? opacity : 0.12;
+      canvas.style.opacity = String(fade);
+      canvas3d.style.opacity = String(fade);
+    } else {
+      applyPetOpacity(settings.opacity);
+    }
   });
 
   let uiaTextMode = false;
