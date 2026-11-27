@@ -17,6 +17,7 @@ interface AppSettings {
   x: number | null;
   y: number | null;
   scale: number;
+  opacity?: number;
   alwaysOnTop: boolean;
   clickThroughLocked: boolean;
   hoverFade: boolean;
@@ -37,6 +38,9 @@ interface AppSettings {
   obsEnabled: boolean;
   obsPort: number;
   obsHidePet: boolean;
+  liveCaptureEnabled?: boolean;
+  liveChromaColor?: 'blue' | 'green' | 'magenta';
+  liveHidePet?: boolean;
   renderMode?: '2d' | '3d';
   collarColor?: 'none' | 'red' | 'blue' | 'pink' | 'green';
   headphoneMode?: 'auto' | 'on' | 'off';
@@ -63,12 +67,19 @@ interface UpdateProgressEvent {
   info?: UpdateInfo | null;
 }
 
+interface AdminStatus {
+  supported: boolean;
+  elevated: boolean;
+  macInputDiag?: boolean;
+}
+
 type MenuTabId = 'appearance' | 'interact' | 'system';
 
 let settings: AppSettings = {
   x: null,
   y: null,
   scale: 1,
+  opacity: 1,
   alwaysOnTop: true,
   clickThroughLocked: false,
   hoverFade: true,
@@ -89,6 +100,9 @@ let settings: AppSettings = {
   obsEnabled: false,
   obsPort: 27421,
   obsHidePet: false,
+  liveCaptureEnabled: false,
+  liveChromaColor: 'blue',
+  liveHidePet: false,
   renderMode: '3d',
   collarColor: 'none',
   headphoneMode: 'off',
@@ -99,25 +113,35 @@ let settings: AppSettings = {
 let catList: CatSkinConfig[] = [...DEFAULT_BUILTIN_CATS];
 let resolvedBackendLocale: string | null = null;
 let sliderDragging = false;
+let opacitySliderDragging = false;
 let currentAppVersion = '5.1.3';
 let cachedUpdateInfo: UpdateInfo | null = null;
 let updateBusy = false;
 let activeTab: MenuTabId = 'appearance';
 let settingsPatchSeq = 0;
+let adminStatus: AdminStatus = { supported: false, elevated: false, macInputDiag: false };
 
 const menuEl = document.getElementById('context-menu') as HTMLDivElement;
 const tabBodyEl = document.getElementById('menu-tab-body') as HTMLDivElement | null;
 const breedPillsEl = document.getElementById('breed-pills') as HTMLDivElement;
 const scaleSliderEl = document.getElementById('scale-slider') as HTMLInputElement;
 const scaleValueEl = document.getElementById('scale-value') as HTMLButtonElement;
+const opacitySliderEl = document.getElementById('opacity-slider') as HTMLInputElement | null;
+const opacityValueEl = document.getElementById('opacity-value') as HTMLButtonElement | null;
 const tailModeBadgeEl = document.getElementById('tail-mode-badge') as HTMLSpanElement;
 const tailKeysCountEl = document.getElementById('tail-keys-count') as HTMLSpanElement;
 const btnOpenTailPickerEl = document.getElementById('btn-open-tail-picker') as HTMLButtonElement | null;
 const langSelectEl = document.getElementById('lang-select') as HTMLSelectElement | null;
+const btnHeaderAdminEl = document.getElementById('btn-header-admin') as HTMLButtonElement | null;
+const btnRestartAdminEl = document.getElementById('btn-restart-admin') as HTMLButtonElement | null;
+const adminRestartLabelEl = document.getElementById('admin-restart-label') as HTMLSpanElement | null;
+const btnMacInputDiagEl = document.getElementById('btn-mac-input-diag') as HTMLButtonElement | null;
+const macInputDiagLabelEl = document.getElementById('mac-input-diag-label') as HTMLSpanElement | null;
 const btnHeaderLockEl = document.getElementById('btn-header-lock') as HTMLButtonElement | null;
 const mcpCardBodyEl = document.getElementById('mcp-card-body') as HTMLDivElement | null;
 const obsCardBodyEl = document.getElementById('obs-card-body') as HTMLDivElement | null;
 const obsPortPillEl = document.getElementById('obs-port-pill') as HTMLSpanElement | null;
+const liveCardBodyEl = document.getElementById('live-card-body') as HTMLDivElement | null;
 const btnCheckUpdateEl = document.getElementById('btn-check-update') as HTMLButtonElement | null;
 const lockKbdEl = document.getElementById('lock-kbd') as HTMLElement | null;
 
@@ -186,6 +210,24 @@ function updateScaleSliderVisual(scaleVal: number): void {
   }
 }
 
+function normalizeOpacity(opacityVal: number | undefined): number {
+  if (typeof opacityVal !== 'number' || !Number.isFinite(opacityVal)) return 1;
+  const normalized = opacityVal >= 10 && opacityVal <= 100 ? opacityVal / 100 : opacityVal;
+  return Math.max(0.2, Math.min(1, normalized));
+}
+
+function updateOpacitySliderVisual(opacityVal: number | undefined): void {
+  const pctNum = Math.round(normalizeOpacity(opacityVal) * 100);
+  if (opacitySliderEl) {
+    opacitySliderEl.value = String(pctNum);
+    const fillPct = ((pctNum - 20) / (100 - 20)) * 100;
+    opacitySliderEl.style.setProperty('--pct', `${fillPct.toFixed(1)}%`);
+  }
+  if (opacityValueEl) {
+    opacityValueEl.textContent = `${pctNum}%`;
+  }
+}
+
 function renderBreedPills(): void {
   if (!breedPillsEl) return;
   breedPillsEl.innerHTML = '';
@@ -229,13 +271,44 @@ function syncUI(): void {
   setToggleSwitch('sw-mcp', settings.mcpEnabled);
   setToggleSwitch('sw-obs', Boolean(settings.obsEnabled));
   setToggleSwitch('sw-obs-hide', Boolean(settings.obsEnabled && settings.obsHidePet));
+  setToggleSwitch('sw-live', Boolean(settings.liveCaptureEnabled));
+  setToggleSwitch('sw-live-hide', Boolean(settings.liveCaptureEnabled && settings.liveHidePet));
 
   if (btnHeaderLockEl) {
     btnHeaderLockEl.classList.toggle('is-locked', settings.clickThroughLocked);
     btnHeaderLockEl.setAttribute('aria-pressed', settings.clickThroughLocked ? 'true' : 'false');
   }
 
-  // Conditionally reveal MCP & OBS bodies only when enabled
+  const adminText = t(adminStatus.elevated ? 'menu.admin_ready' : 'menu.admin_restart');
+  const macDiagText = t('menu.mac_input_diag');
+  const showHeaderShield = adminStatus.supported || Boolean(adminStatus.macInputDiag);
+  if (btnHeaderAdminEl) {
+    btnHeaderAdminEl.classList.toggle('hidden', !showHeaderShield);
+    btnHeaderAdminEl.classList.toggle('is-elevated', adminStatus.supported && adminStatus.elevated);
+    btnHeaderAdminEl.disabled = adminStatus.supported && adminStatus.elevated;
+    btnHeaderAdminEl.dataset.action = adminStatus.supported ? 'restart-admin' : 'mac-input-diag';
+    const headerTip = adminStatus.supported ? adminText : macDiagText;
+    btnHeaderAdminEl.title = headerTip;
+    btnHeaderAdminEl.setAttribute('aria-label', headerTip);
+  }
+  if (btnRestartAdminEl) {
+    btnRestartAdminEl.classList.toggle('hidden', !adminStatus.supported);
+    btnRestartAdminEl.classList.toggle('is-elevated', adminStatus.elevated);
+    btnRestartAdminEl.disabled = adminStatus.elevated;
+    btnRestartAdminEl.title = adminText;
+  }
+  if (adminRestartLabelEl) {
+    adminRestartLabelEl.textContent = adminText;
+  }
+  if (btnMacInputDiagEl) {
+    btnMacInputDiagEl.classList.toggle('hidden', !adminStatus.macInputDiag);
+    btnMacInputDiagEl.title = macDiagText;
+  }
+  if (macInputDiagLabelEl) {
+    macInputDiagLabelEl.textContent = macDiagText;
+  }
+
+  // Conditionally reveal MCP, OBS & Live Capture bodies only when enabled
   if (mcpCardBodyEl) {
     mcpCardBodyEl.classList.toggle('hidden', !settings.mcpEnabled);
   }
@@ -246,6 +319,16 @@ function syncUI(): void {
     obsPortPillEl.textContent = `:${settings.obsPort || 27421}`;
     obsPortPillEl.classList.toggle('hidden', !settings.obsEnabled);
   }
+  if (liveCardBodyEl) {
+    liveCardBodyEl.classList.toggle('hidden', !settings.liveCaptureEnabled);
+  }
+  const liveChromaColor =
+    settings.liveChromaColor === 'green' || settings.liveChromaColor === 'magenta'
+      ? settings.liveChromaColor
+      : 'blue';
+  document.querySelectorAll<HTMLButtonElement>('[data-livechroma]').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.livechroma === liveChromaColor);
+  });
 
   const obsHint = document.getElementById('obs-copy-hint');
   if (obsHint && !obsHint.classList.contains('copied')) {
@@ -266,6 +349,9 @@ function syncUI(): void {
 
   if (!sliderDragging) {
     updateScaleSliderVisual(settings.scale);
+  }
+  if (!opacitySliderDragging) {
+    updateOpacitySliderVisual(settings.opacity);
   }
 
   const kbLayout: KeyboardLayoutId = settings.keyboardLayout === '108' ? '108' : '65';
@@ -563,11 +649,17 @@ async function bootstrap(): Promise<void> {
     }
 
     const target = (e.target as HTMLElement).closest<HTMLElement>(
-      '[data-action], [data-breed], [data-rendermode], [data-collar], [data-headphonemode], [data-kblayout], [data-kborient], [data-tailmode], [data-fpscap], [data-statspos], [data-hoverfade]',
+      '[data-action], [data-breed], [data-rendermode], [data-collar], [data-headphonemode], [data-kblayout], [data-kborient], [data-tailmode], [data-fpscap], [data-livechroma], [data-statspos], [data-hoverfade]',
     );
     if (!target) return;
 
     void initReadyPromise.then(() => {
+      const liveChromaAttr = target.dataset.livechroma;
+      if (liveChromaAttr === 'blue' || liveChromaAttr === 'green' || liveChromaAttr === 'magenta') {
+        void applySettingsPatch({ liveChromaColor: liveChromaAttr });
+        return;
+      }
+
       const fpsAttr = target.dataset.fpscap;
       if (fpsAttr === '0' || fpsAttr === '30') {
         void applySettingsPatch({ fpsCap: fpsAttr === '30' ? 30 : 0 });
@@ -686,6 +778,22 @@ async function bootstrap(): Promise<void> {
           }
           break;
         }
+        case 'toggle-live-capture': {
+          const nextLive = !settings.liveCaptureEnabled;
+          void applySettingsPatch({
+            liveCaptureEnabled: nextLive,
+            liveHidePet: nextLive ? Boolean(settings.liveHidePet) : false,
+          });
+          break;
+        }
+        case 'toggle-live-hide': {
+          const nextHide = !settings.liveHidePet;
+          void applySettingsPatch({ liveHidePet: nextHide });
+          if (nextHide) {
+            closeMenu();
+          }
+          break;
+        }
         case 'toggle-mcp':
           void applySettingsPatch({ mcpEnabled: !settings.mcpEnabled });
           break;
@@ -697,6 +805,18 @@ async function bootstrap(): Promise<void> {
           break;
         case 'open-tail-picker':
           void invoke('open_tail_picker_from_menu');
+          break;
+        case 'restart-admin':
+          if (adminStatus.supported && !adminStatus.elevated) {
+            closeMenu();
+            void invoke('restart_as_admin').catch(() => {});
+          }
+          break;
+        case 'mac-input-diag':
+          if (adminStatus.macInputDiag) {
+            closeMenu();
+            void invoke('diagnose_macos_input').catch(() => {});
+          }
           break;
         case 'desktop-shortcut':
           void createDesktopShortcut();
@@ -725,14 +845,16 @@ async function bootstrap(): Promise<void> {
 
   let inTauri = true;
   try {
-    const [loadedSettings, loadedCats, ver, cachedUpd, resolvedLoc] = await Promise.all([
+    const [loadedSettings, loadedCats, ver, cachedUpd, resolvedLoc, loadedAdmin] = await Promise.all([
       invoke<AppSettings>('get_settings'),
       invoke<CatSkinConfig[]>('get_cats'),
       invoke<string>('get_app_version'),
       invoke<UpdateInfo | null>('get_cached_update_info').catch(() => null),
       invoke<string>('get_resolved_locale').catch(() => ''),
+      invoke<AdminStatus>('get_admin_status').catch(() => ({ supported: false, elevated: false })),
     ]);
     settings = loadedSettings;
+    adminStatus = loadedAdmin;
     if (Array.isArray(loadedCats) && loadedCats.length > 0) {
       catList = loadedCats;
     }
@@ -753,6 +875,7 @@ async function bootstrap(): Promise<void> {
     const qLang = params.get('lang');
     if (qLang) settings.language = qLang;
     if (params.get('obs') === '1') settings.obsEnabled = true;
+    if (params.get('live') === '1') settings.liveCaptureEnabled = true;
     if (params.get('mcp') === '0') settings.mcpEnabled = false;
     const qTail = params.get('tail');
     if (qTail === 'smart' || qTail === 'custom' || qTail === 'edge' || qTail === 'off') {
@@ -838,6 +961,37 @@ async function bootstrap(): Promise<void> {
       sliderDragging = false;
       updateScaleSliderVisual(1.0);
       void applySettingsPatch({ scale: 1.0 });
+    });
+  }
+
+  if (opacitySliderEl) {
+    opacitySliderEl.addEventListener('pointerdown', () => {
+      opacitySliderDragging = true;
+    });
+    opacitySliderEl.addEventListener('input', () => {
+      opacitySliderDragging = true;
+      const nextOpacity = Math.max(0.2, Math.min(1.0, Number(opacitySliderEl.value) / 100));
+      updateOpacitySliderVisual(nextOpacity);
+      void invoke('preview_opacity', { opacity: nextOpacity }).catch(() => {});
+    });
+    const commitSliderOpacity = () => {
+      opacitySliderDragging = false;
+      const nextOpacity = Math.max(0.2, Math.min(1.0, Number(opacitySliderEl.value) / 100));
+      void applySettingsPatch({ opacity: nextOpacity });
+    };
+    opacitySliderEl.addEventListener('change', commitSliderOpacity);
+    opacitySliderEl.addEventListener('pointerup', () => {
+      opacitySliderDragging = false;
+    });
+  }
+
+  if (opacityValueEl) {
+    opacityValueEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      opacitySliderDragging = false;
+      updateOpacitySliderVisual(1.0);
+      void invoke('preview_opacity', { opacity: 1.0 }).catch(() => {});
+      void applySettingsPatch({ opacity: 1.0 });
     });
   }
 

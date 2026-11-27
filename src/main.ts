@@ -39,6 +39,7 @@ interface AppSettings {
   x: number | null;
   y: number | null;
   scale: number;
+  opacity?: number;
   alwaysOnTop: boolean;
   clickThroughLocked: boolean;
   hoverFade: boolean;
@@ -59,6 +60,9 @@ interface AppSettings {
   obsEnabled?: boolean;
   obsPort?: number;
   obsHidePet?: boolean;
+  liveCaptureEnabled?: boolean;
+  liveChromaColor?: 'blue' | 'green' | 'magenta';
+  liveHidePet?: boolean;
   renderMode?: DesktopRenderMode;
   collarColor?: CollarColorId;
   headphoneMode?: HeadphoneMode;
@@ -130,6 +134,7 @@ let toastAutoHideTimer: number | null = null;
 const ADMIN_HINT_DISMISSED_KEY = 'kurocat_admin_game_hint_dismissed';
 let adminHintShownThisSession = false;
 let sliderDragging = false;
+let opacitySliderDragging = false;
 let altOverride = false;
 let lastKnownLockState: boolean | null = null;
 let syncWin7OverlayFn: ((focusMenu?: boolean) => void) | null = null;
@@ -145,6 +150,7 @@ let settings: AppSettings = {
   x: null,
   y: null,
   scale: 1,
+  opacity: 1,
   alwaysOnTop: true,
   clickThroughLocked: false,
   hoverFade: true,
@@ -162,6 +168,9 @@ let settings: AppSettings = {
   privacyPasswordGuard: true,
   tailKeyMode: 'smart',
   tailKeyIds: [...DEFAULT_TAIL_KEY_IDS],
+  liveCaptureEnabled: false,
+  liveChromaColor: 'blue',
+  liveHidePet: false,
   renderMode: '3d',
   collarColor: 'none',
   headphoneMode: 'off',
@@ -182,6 +191,8 @@ const menuEl = document.getElementById('context-menu') as HTMLDivElement;
 const breedPillsEl = document.getElementById('breed-pills') as HTMLDivElement;
 const scaleSliderEl = document.getElementById('scale-slider') as HTMLInputElement;
 const scaleValueEl = document.getElementById('scale-value') as HTMLButtonElement;
+const opacitySliderEl = document.getElementById('opacity-slider') as HTMLInputElement | null;
+const opacityValueEl = document.getElementById('opacity-value') as HTMLButtonElement | null;
 const updateToastEl = document.getElementById('update-toast') as HTMLDivElement;
 const updateToastTextEl = document.getElementById('update-toast-text') as HTMLSpanElement;
 const btnToastInstallEl = document.getElementById('btn-toast-install') as HTMLButtonElement;
@@ -279,6 +290,7 @@ function replaceCanvas3d(): HTMLCanvasElement {
   const fresh = document.createElement('canvas');
   fresh.id = 'pet-canvas-3d';
   fresh.className = old.className;
+  fresh.style.opacity = old.style.opacity;
   fresh.classList.remove('pet-hover', 'pet-dragging');
   old.replaceWith(fresh);
   canvas3d = fresh;
@@ -497,9 +509,49 @@ function updateScaleSliderVisual(scaleVal: number): void {
   }
 }
 
+function normalizeOpacity(opacityVal: number | undefined): number {
+  if (typeof opacityVal !== 'number' || !Number.isFinite(opacityVal)) return 1;
+  const normalized = opacityVal >= 10 && opacityVal <= 100 ? opacityVal / 100 : opacityVal;
+  return Math.max(0.2, Math.min(1, normalized));
+}
+
+function updateOpacitySliderVisual(opacityVal: number | undefined): void {
+  const pctNum = Math.round(normalizeOpacity(opacityVal) * 100);
+  if (opacitySliderEl) {
+    opacitySliderEl.value = String(pctNum);
+    const fillPct = ((pctNum - 20) / (100 - 20)) * 100;
+    opacitySliderEl.style.setProperty('--pct', `${fillPct.toFixed(1)}%`);
+  }
+  if (opacityValueEl) {
+    opacityValueEl.textContent = `${pctNum}%`;
+  }
+}
+
+function applyPetOpacity(opacityVal: number | undefined): void {
+  const clamped = normalizeOpacity(opacityVal);
+  // On Win7/8 ULW mode, transparency is composited natively via UpdateLayeredWindow
+  // SourceConstantAlpha, so keep the offscreen 2D canvas opaque to preserve alpha precision.
+  const cssOpacity = isWin7Ulw ? '1' : clamped.toFixed(3);
+  canvas.style.opacity = cssOpacity;
+  canvas3d.style.opacity = cssOpacity;
+}
+
+let adminStatus: { supported: boolean; elevated: boolean } = { supported: false, elevated: false };
+
 function syncMenuUI(): void {
   setActiveLocale(settings.language, resolvedBackendLocale);
   applyDomTranslations();
+
+  const btnRestartAdmin = document.getElementById('btn-restart-admin') as HTMLButtonElement | null;
+  const adminRestartLabel = document.getElementById('admin-restart-label');
+  const adminText = t(adminStatus.elevated ? 'menu.admin_ready' : 'menu.admin_restart');
+  if (btnRestartAdmin) {
+    btnRestartAdmin.classList.toggle('hidden', !adminStatus.supported);
+    btnRestartAdmin.disabled = adminStatus.elevated;
+  }
+  if (adminRestartLabel) {
+    adminRestartLabel.textContent = adminText;
+  }
 
   const setCheck = (id: string, on: boolean) => {
     const el = document.getElementById(id);
@@ -516,6 +568,10 @@ function syncMenuUI(): void {
 
   if (!sliderDragging) {
     updateScaleSliderVisual(settings.scale);
+  }
+  if (!opacitySliderDragging) {
+    updateOpacitySliderVisual(settings.opacity);
+    applyPetOpacity(settings.opacity);
   }
 
   const kbLayout: KeyboardLayoutId = settings.keyboardLayout === '108' ? '108' : '65';
@@ -1090,13 +1146,18 @@ async function bootstrap(): Promise<void> {
   }
 
   try {
-    const [loadedSettings, loadedCats, loadedVer, resolvedLoc] = await Promise.all([
+    const [loadedSettings, loadedCats, loadedVer, resolvedLoc, loadedAdmin] = await Promise.all([
       invoke<AppSettings>('get_settings'),
       invoke<CatSkinConfig[]>('get_cats'),
       invoke<string>('get_app_version'),
       invoke<string>('get_resolved_locale').catch(() => ''),
+      invoke<{ supported: boolean; elevated: boolean }>('get_admin_status').catch(() => ({
+        supported: false,
+        elevated: false,
+      })),
     ]);
     settings = loadedSettings;
+    adminStatus = loadedAdmin;
     lastKnownLockState = settings.clickThroughLocked;
     if (Array.isArray(loadedCats) && loadedCats.length > 0) {
       catList = loadedCats;
@@ -1136,7 +1197,7 @@ async function bootstrap(): Promise<void> {
 
   btnToastOpenEl.addEventListener('click', (e) => {
     e.stopPropagation();
-    const url = latestUpdateInfo?.releaseUrl || 'https://github.com/qianyiai/kurocat/releases/latest';
+    const url = latestUpdateInfo?.releaseUrl || 'https://github.com/qianyiai/KuroCat/releases/latest';
     void invoke('open_release_page', { url });
   });
 
@@ -1195,6 +1256,39 @@ async function bootstrap(): Promise<void> {
     });
   }
 
+  if (opacitySliderEl) {
+    opacitySliderEl.addEventListener('pointerdown', () => {
+      opacitySliderDragging = true;
+    });
+    opacitySliderEl.addEventListener('input', () => {
+      opacitySliderDragging = true;
+      const nextOpacity = Math.max(0.2, Math.min(1.0, Number(opacitySliderEl.value) / 100));
+      updateOpacitySliderVisual(nextOpacity);
+      applyPetOpacity(nextOpacity);
+      void invoke('preview_opacity', { opacity: nextOpacity }).catch(() => {});
+    });
+    const commitSliderOpacity = () => {
+      opacitySliderDragging = false;
+      const nextOpacity = Math.max(0.2, Math.min(1.0, Number(opacitySliderEl.value) / 100));
+      void applySettingsPatch({ opacity: nextOpacity });
+    };
+    opacitySliderEl.addEventListener('change', commitSliderOpacity);
+    opacitySliderEl.addEventListener('pointerup', () => {
+      opacitySliderDragging = false;
+    });
+  }
+
+  if (opacityValueEl) {
+    opacityValueEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      opacitySliderDragging = false;
+      updateOpacitySliderVisual(1.0);
+      applyPetOpacity(1.0);
+      void invoke('preview_opacity', { opacity: 1.0 }).catch(() => {});
+      void applySettingsPatch({ opacity: 1.0 });
+    });
+  }
+
   await listen<AppSettings>('kuro-settings', (ev) => {
     const prevLock = lastKnownLockState;
     const prevRenderMode = settings.renderMode;
@@ -1234,6 +1328,12 @@ async function bootstrap(): Promise<void> {
   await listen<number>('kuro-scale-preview', (ev) => {
     if (typeof ev.payload === 'number' && Number.isFinite(ev.payload)) {
       engine.setRenderScale(Math.max(0.2, Math.min(1.5, ev.payload)));
+    }
+  });
+
+  await listen<number>('kuro-opacity-preview', (ev) => {
+    if (typeof ev.payload === 'number' && Number.isFinite(ev.payload)) {
+      applyPetOpacity(ev.payload);
     }
   });
 
@@ -1407,6 +1507,7 @@ async function bootstrap(): Promise<void> {
       case 'mouseUp':
         if (p.button === 'left') {
           resolveLinuxMouseUp?.();
+          cancelPendingTapVsDrag?.();
         }
         if (settings.typingSoundEnabled) {
           catAudio.playMouseUp(p.button);
@@ -1683,7 +1784,6 @@ async function bootstrap(): Promise<void> {
     const cleanup = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
-      window.removeEventListener('blur', onCancel);
       if (holdTimer !== null) {
         window.clearTimeout(holdTimer);
         holdTimer = null;
@@ -1730,7 +1830,6 @@ async function bootstrap(): Promise<void> {
     cancelPendingTapVsDrag = onCancel;
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    window.addEventListener('blur', onCancel);
     holdTimer = window.setTimeout(beginDrag, TAP_MAX_MS);
   };
   canvas3dMouseDownListener = handleCanvasMouseDown;
@@ -1882,6 +1981,12 @@ async function bootstrap(): Promise<void> {
       case 'copy-hooks':
         void copyAgentHooksConfig();
         break;
+      case 'restart-admin':
+        if (adminStatus.supported && !adminStatus.elevated) {
+          closeContextMenu();
+          void invoke('restart_as_admin').catch(() => {});
+        }
+        break;
       case 'desktop-shortcut':
         void createDesktopShortcut();
         break;
@@ -1909,6 +2014,7 @@ async function bootstrap(): Promise<void> {
     const useWin7Ulw = await invoke<boolean>('is_win7_ulw_mode');
     if (useWin7Ulw) {
       isWin7Ulw = true;
+      applyPetOpacity(settings.opacity);
       activateRenderEngine();
       document.documentElement.classList.add('win7-ulw-mode');
       const petCtx = canvas.getContext('2d');
@@ -2038,7 +2144,11 @@ async function bootstrap(): Promise<void> {
 
   // Issue #41 safety reminder: when click-through lock was persisted across restarts,
   // briefly show a one-click [解锁] toast so users can never feel trapped (even at 20%-36% scale).
-  if (settings.clickThroughLocked && !(settings.obsEnabled && settings.obsHidePet)) {
+  if (
+    settings.clickThroughLocked &&
+    !(settings.obsEnabled && settings.obsHidePet) &&
+    !(settings.liveCaptureEnabled && settings.liveHidePet)
+  ) {
     showUpdateToast(formatLockedToastText(true), {
       showUnlock: true,
       autoHideMs: 5200,

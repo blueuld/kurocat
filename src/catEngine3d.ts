@@ -391,6 +391,7 @@ function createEyeShaderMaterial(side: -1 | 1): THREE.ShaderMaterial {
       uLashCol: { value: new THREE.Color('#0b0c10') },
       uPupilCenter: { value: new THREE.Vector2(0, 0) },
       uPupilRad: { value: new THREE.Vector2(0.43, 0.67) },
+      uPupilShape: { value: 0 },
       uCross: { value: 0 },
       uRestSquint: { value: 0 },
       uCurious: { value: 0 },
@@ -422,6 +423,7 @@ function createEyeShaderMaterial(side: -1 | 1): THREE.ShaderMaterial {
       uniform vec3 uLashCol;
       uniform vec2 uPupilCenter;
       uniform vec2 uPupilRad;
+      uniform float uPupilShape;
       uniform float uCross;
       uniform float uRestSquint;
       uniform float uCurious;
@@ -470,12 +472,27 @@ function createEyeShaderMaterial(side: -1 | 1): THREE.ShaderMaterial {
         float limbal = smoothstep(0.84, 0.98, r);
         col = mix(col, col * 0.50 + vec3(0.01), limbal * uLimbalAmt);
 
-        // Crisp elliptical pupil strictly clipped inside iris boundary
+        // Crisp analytical pupil strictly clipped inside iris boundary (oval / round / sharp cat slit / dot / star)
         vec2 pd = (p - uPupilCenter) / max(uPupilRad, vec2(0.05));
-        float pr = length(pd);
+        float pr;
+        if (uPupilShape > 1.5 && uPupilShape < 2.5) {
+          // Sharp vertical feline slit
+          float pinch = max(0.24, 1.0 - 0.66 * clamp(pd.y * pd.y, 0.0, 1.0));
+          pr = length(vec2(pd.x / pinch, pd.y));
+        } else {
+          pr = length(pd);
+        }
         float paa = max(fwidth(pr), 0.032);
         float pupilMask = (1.0 - smoothstep(1.0 - paa, 1.0 + paa, pr)) * (1.0 - smoothstep(0.90, 0.96, r));
         col = mix(col, uPupilCol, pupilMask);
+
+        if (uPupilShape > 3.5) {
+          // Sparkling 4-point star highlight inside pupil
+          vec2 sp = abs(pd) * 1.18;
+          float starR = pow(pow(sp.x, 0.52) + pow(sp.y, 0.52), 1.92);
+          float starMask = (1.0 - smoothstep(0.68, 0.84, starR)) * pupilMask;
+          col = mix(col, vec3(1.0), starMask * 0.92);
+        }
 
         col *= (1.0 - lidShadow);
 
@@ -589,7 +606,7 @@ export class KuroCatEngine3D {
   private readonly capGeoStart = createCapGeometry(0);
   private readonly capGeoEnd = createCapGeometry(1);
   private bodyGeo: THREE.LatheGeometry;
-  private earGeo: THREE.LatheGeometry;
+  private earGeo: THREE.BufferGeometry;
   private disposed = false;
   private readonly bodyMesh: THREE.Mesh;
   private outlineSamplePts: THREE.Vector3[];
@@ -600,9 +617,29 @@ export class KuroCatEngine3D {
   private earMountY = 0.255;
   private earBaseTilt = 0.06;
   private earBaseScale = 1.0;
+  private eyePatchRx = EYE_MAX_RX;
+  private eyePatchRy = EYE_MAX_RY;
+  private noseBaseY = -0.042;
+  private mouthEnabled = true;
   private whiskerMesh!: THREE.Mesh;
+  private eyebrowMesh!: THREE.Mesh;
   private noseMesh!: THREE.Mesh;
   private mouthTube!: TaperTube3D;
+  private blepMesh!: THREE.Mesh;
+  private readonly eyebrowMat = new THREE.MeshBasicMaterial({
+    color: '#4a3d35',
+    depthTest: true,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  private readonly blepMat = new THREE.MeshBasicMaterial({
+    color: '#f489a0',
+    depthTest: true,
+    polygonOffset: true,
+    polygonOffsetFactor: -3,
+    polygonOffsetUnits: -3,
+  });
   private readonly yawnGroup = new THREE.Group();
   private readonly lickTongueMesh!: THREE.Mesh;
   private readonly catShadow!: THREE.Mesh;
@@ -796,6 +833,7 @@ export class KuroCatEngine3D {
   private currentPalette: FurPalette3D | null = null;
   private renderStyle: RenderStyle3D = '3d';
   private collarId: CollarColorId = 'none';
+  private chromaKeyBg: string | null = null;
   private embedded = false;
   private renderScale = 1.0;
   private tailKeyMode: TailKeyMode = 'smart';
@@ -938,6 +976,10 @@ export class KuroCatEngine3D {
   private fpsCap = 0;
   private sleepTrimSent = false;
   public onDeepSleep: (() => void) | null = null;
+  private readonly handleContextRestored = (): void => {
+    this.applyChromaKeyState();
+    this.wakeRendering();
+  };
 
   constructor(canvas: HTMLCanvasElement, options?: { embedded?: boolean }) {
     this.canvas = canvas;
@@ -1171,34 +1213,34 @@ export class KuroCatEngine3D {
       });
     }
 
-    // 7) Dainty Short KuroCat Cheek Whiskers merged into 1 single static draw call (was 6 draw calls!)
+    // 7) Dainty Short KuroCat Cheek Whiskers + Optional Sculpted Eyebrows (1 static draw call each!)
     this.whiskerMesh = new THREE.Mesh(this.buildWhiskersGeometry(), this.whiskerMat);
     this.whiskerMesh.renderOrder = 12;
-    this.headMount.add(this.whiskerMesh);
+    this.eyebrowMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.eyebrowMat);
+    this.eyebrowMesh.renderOrder = 13;
+    this.eyebrowMesh.visible = false;
+    this.headMount.add(this.whiskerMesh, this.eyebrowMesh);
 
-    // 8) Delicate 3D Nose & "ω" Mouth (shown on Ragdoll / Tabby / Calico / Tuxedo / Siamese; hidden on pure Black Cat!)
+    // 8) Delicate 3D Nose, Sculpted Mouth & Optional Blep Tongue
     {
       const NY = -0.042;
-      const noseShape = new THREE.Shape();
-      noseShape.moveTo(-0.040, 0.011);
-      noseShape.quadraticCurveTo(0, 0.023, 0.040, 0.011);
-      noseShape.quadraticCurveTo(0.044, 0.003, 0.011, -0.022);
-      noseShape.quadraticCurveTo(0, -0.028, -0.011, -0.022);
-      noseShape.quadraticCurveTo(-0.044, 0.003, -0.040, 0.011);
-      this.noseMesh = new THREE.Mesh(new THREE.ShapeGeometry(noseShape, 10), this.noseMat);
+      this.noseMesh = new THREE.Mesh(this.buildNoseGeometry('cat', 1.0), this.noseMat);
       this.noseMesh.position.set(0, NY, this.surfaceZ(0, NY) + 0.024);
       this.noseMesh.renderOrder = 12;
 
       this.mouthTube = new TaperTube3D(24, 4, this.mouthMat, 12);
-      this.mouthTube.update(
-        (t, out) => {
-          const x = mix(-0.064, 0.064, t);
-          const y = NY - 0.032 - 0.020 * Math.sin((Math.abs(x) / 0.064) * Math.PI);
-          out.set(x, y, this.surfaceZ(x, y) + 0.024);
-        },
-        () => 0.0050,
-      );
-      this.faceGroup.add(this.noseMesh, this.mouthTube.mesh);
+      this.updateMouthTube('w', 1.0, NY, 0.0);
+
+      const blepShape = new THREE.Shape();
+      blepShape.moveTo(-0.024, 0.0);
+      blepShape.bezierCurveTo(-0.028, -0.052, 0.028, -0.052, 0.024, 0.0);
+      blepShape.closePath();
+      this.blepMesh = new THREE.Mesh(new THREE.ShapeGeometry(blepShape, 10), this.blepMat);
+      this.blepMesh.position.set(0, NY - 0.036, this.surfaceZ(0, NY - 0.046) + 0.022);
+      this.blepMesh.renderOrder = 11;
+      this.blepMesh.visible = false;
+
+      this.faceGroup.add(this.noseMesh, this.mouthTube.mesh, this.blepMesh);
       this.headMount.add(this.faceGroup);
 
       // 8a) Expressive 3D Yawn Mouth (cat "ω" upper lip anchored strictly BELOW nose + soft rounded jaw & nested pink tongue!)
@@ -1348,6 +1390,8 @@ export class KuroCatEngine3D {
     this.angerSprite.visible = false;
     this.scene.add(this.angerSprite);
 
+    this.canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
+    this.applyChromaKeyState();
     this.resize();
   }
 
@@ -1551,7 +1595,138 @@ export class KuroCatEngine3D {
     return pts[pts.length - 1].x;
   }
 
-  private buildEarGeometry(shape: CatEarShape): THREE.LatheGeometry {
+  private buildNoseGeometry(shape: CatContourResolved['noseShape'], scale: number): THREE.BufferGeometry {
+    const sc = Math.max(0.45, Math.min(1.9, scale));
+    const s = new THREE.Shape();
+    if (shape === 'round') {
+      s.absellipse(0, 0, 0.042 * sc, 0.032 * sc, 0, Math.PI * 2, false, 0);
+    } else if (shape === 'wide') {
+      s.moveTo(-0.060 * sc, 0.014 * sc);
+      s.quadraticCurveTo(0, 0.028 * sc, 0.060 * sc, 0.014 * sc);
+      s.quadraticCurveTo(0.054 * sc, -0.022 * sc, 0, -0.030 * sc);
+      s.quadraticCurveTo(-0.054 * sc, -0.022 * sc, -0.060 * sc, 0.014 * sc);
+    } else if (shape === 'small') {
+      s.absellipse(0, 0, 0.025 * sc, 0.019 * sc, 0, Math.PI * 2, false, 0);
+    } else {
+      s.moveTo(-0.040 * sc, 0.011 * sc);
+      s.quadraticCurveTo(0, 0.023 * sc, 0.040 * sc, 0.011 * sc);
+      s.quadraticCurveTo(0.044 * sc, 0.003 * sc, 0.011 * sc, -0.022 * sc);
+      s.quadraticCurveTo(0, -0.028 * sc, -0.011 * sc, -0.022 * sc);
+      s.quadraticCurveTo(-0.044 * sc, 0.003 * sc, -0.040 * sc, 0.011 * sc);
+    }
+    return new THREE.ShapeGeometry(s, 10);
+  }
+
+  private updateMouthTube(
+    shape: CatContourResolved['mouthShape'],
+    scale: number,
+    noseY: number,
+    offsetY: number,
+  ): void {
+    const sc = Math.max(0.5, Math.min(1.8, scale));
+    const baseY = noseY - 0.032 - offsetY * 0.048;
+    const halfW = 0.064 * sc;
+    const thick = 0.0050 * Math.max(0.8, Math.sqrt(sc));
+    if (shape === 'smile') {
+      this.mouthTube.update(
+        (t, out) => {
+          const x = mix(-halfW * 1.05, halfW * 1.05, t);
+          const y = baseY + 0.006 - 0.034 * sc * Math.sin(t * Math.PI);
+          out.set(x, y, this.surfaceZ(x, y) + 0.024);
+        },
+        () => thick,
+      );
+    } else if (shape === 'flat') {
+      this.mouthTube.update(
+        (t, out) => {
+          const x = mix(-halfW * 0.95, halfW * 0.95, t);
+          const y = baseY - 0.008 + 0.004 * Math.sin(t * Math.PI);
+          out.set(x, y, this.surfaceZ(x, y) + 0.024);
+        },
+        () => thick,
+      );
+    } else if (shape === 'open') {
+      const rx = 0.030 * sc;
+      const ry = 0.034 * sc;
+      const cy = baseY - 0.018 * sc;
+      this.mouthTube.update(
+        (t, out) => {
+          const a = t * Math.PI * 2;
+          const x = Math.cos(a) * rx;
+          const y = cy + Math.sin(a) * ry;
+          out.set(x, y, this.surfaceZ(x, y) + 0.024);
+        },
+        () => thick * 1.05,
+      );
+    } else {
+      this.mouthTube.update(
+        (t, out) => {
+          const x = mix(-halfW, halfW, t);
+          const y = baseY - 0.020 * sc * Math.sin((Math.abs(x) / Math.max(0.01, halfW)) * Math.PI);
+          out.set(x, y, this.surfaceZ(x, y) + 0.024);
+        },
+        () => thick,
+      );
+    }
+  }
+
+  private buildEyebrowsGeometry(contour: CatContourResolved): THREE.BufferGeometry {
+    if (contour.eyebrowStyle === 'none') return new THREE.BufferGeometry();
+    const geos: Array<{ geo: THREE.BufferGeometry }> = [];
+    const eScale = contour.eyeScale;
+    const eAspect = contour.eyeAspect;
+    const lyEye = 0.105 - contour.eyeOffsetY * 0.085;
+    const browY = lyEye + 0.136 * eScale * eAspect + 0.056;
+    const span = 0.095 * Math.max(0.75, eScale);
+    for (const s of [-1, 1] as const) {
+      const lx = s * 0.232 * contour.eyeSpacing;
+      const tube = new TaperTube3D(12, 5, this.eyebrowMat, 13);
+      if (contour.eyebrowStyle === 'thick') {
+        // Shiba / Husky adorable oval dot brow
+        tube.update(
+          (t, out) => {
+            const x = lx + s * mix(-0.040, 0.026, t) * eScale;
+            const y = browY + 0.010 * Math.sin(t * Math.PI) + s * (t - 0.5) * 0.012;
+            out.set(x, y, this.surfaceZ(x, y) + 0.028);
+          },
+          (t) => (0.014 + 0.015 * Math.sin(t * Math.PI)) * Math.max(0.75, eScale),
+        );
+      } else if (contour.eyebrowStyle === 'angry') {
+        tube.update(
+          (t, out) => {
+            const x = lx + s * mix(-span, span, t);
+            const y = browY + mix(-0.028, 0.032, t);
+            out.set(x, y, this.surfaceZ(x, y) + 0.028);
+          },
+          (t) => 0.011 + 0.005 * Math.sin(t * Math.PI),
+        );
+      } else if (contour.eyebrowStyle === 'worried') {
+        tube.update(
+          (t, out) => {
+            const x = lx + s * mix(-span, span, t);
+            const y = browY + mix(0.028, -0.028, t) + 0.008 * Math.sin(t * Math.PI);
+            out.set(x, y, this.surfaceZ(x, y) + 0.028);
+          },
+          (t) => 0.009 + 0.004 * Math.sin(t * Math.PI),
+        );
+      } else {
+        tube.update(
+          (t, out) => {
+            const x = lx + s * mix(-span, span, t);
+            const y = browY - 0.008 + 0.028 * Math.sin(t * Math.PI);
+            out.set(x, y, this.surfaceZ(x, y) + 0.028);
+          },
+          (t) => 0.008 + 0.003 * Math.sin(t * Math.PI),
+        );
+      }
+      geos.push({ geo: tube.mesh.geometry });
+    }
+    const merged = mergeStaticGeometries(geos);
+    for (const item of geos) item.geo.dispose();
+    return merged;
+  }
+
+  private buildEarGeometry(shape: CatEarShape): THREE.BufferGeometry {
     let earPts: Array<[number, number]>;
     switch (shape) {
       case 'round':
@@ -1605,6 +1780,31 @@ export class KuroCatEngine3D {
           [0.0, 0.386],
         ];
         break;
+      case 'folded':
+        // Scottish Fold compact ear that bends smoothly forward & down at the tip
+        earPts = [
+          [0.21, -0.04],
+          [0.20, 0.03],
+          [0.18, 0.11],
+          [0.145, 0.19],
+          [0.098, 0.25],
+          [0.045, 0.285],
+          [0.0, 0.295],
+        ];
+        break;
+      case 'floppy':
+        // Plush hanging puppy / lop-bunny ear (droops downward along cheek!)
+        earPts = [
+          [0.14, 0.04],
+          [0.175, -0.04],
+          [0.195, -0.15],
+          [0.190, -0.27],
+          [0.155, -0.37],
+          [0.095, -0.43],
+          [0.036, -0.458],
+          [0.0, -0.465],
+        ];
+        break;
       default:
         earPts = [
           [0.23, -0.05],
@@ -1623,12 +1823,37 @@ export class KuroCatEngine3D {
       ...earPts.map(([r, y]) => new THREE.Vector2(r, y)),
     ];
     const geo = new THREE.LatheGeometry(new THREE.SplineCurve(earSplinePts).getSpacedPoints(20), 26);
+    if (shape === 'folded') {
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const y = pos.getY(i);
+        const z = pos.getZ(i);
+        const foldU = smoothstep(0.06, 0.29, y);
+        const ny = y - foldU * foldU * 0.14;
+        const nz = z + foldU * 0.22;
+        pos.setXYZ(i, x, ny, nz);
+      }
+      geo.computeVertexNormals();
+    } else if (shape === 'floppy') {
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const y = pos.getY(i);
+        const z = pos.getZ(i);
+        const droopU = smoothstep(0.02, -0.45, y);
+        pos.setXYZ(i, x, y, z + droopU * 0.075);
+      }
+      geo.computeVertexNormals();
+    }
     geo.setAttribute('rest', geo.attributes.position.clone());
     return geo;
   }
 
   private buildWhiskersGeometry(): THREE.BufferGeometry {
     const hw = this.currentContour.headWidth;
+    const wLen = this.currentContour.whiskerLength;
+    if (wLen <= 0.01) return new THREE.BufferGeometry();
     const xBase = 0.38 * mix(1.0, hw, 0.55);
     const whiskerGeos: Array<{ geo: THREE.BufferGeometry }> = [];
     for (const s of [-1, 1] as const) {
@@ -1638,8 +1863,8 @@ export class KuroCatEngine3D {
         const x0 = s * xBase;
         const z0 = this.surfaceZ(x0, y0) + 0.012;
         const a = new THREE.Vector3(x0, y0, z0);
-        const c = new THREE.Vector3(s * (xBase + 0.10), y0 - 0.008 - i * 0.006, z0 - 0.03);
-        const b = new THREE.Vector3(s * (xBase + 0.20), y0 - 0.022 - i * 0.016, z0 - 0.09);
+        const c = new THREE.Vector3(s * (xBase + 0.10 * wLen), y0 - (0.008 + i * 0.006) * wLen, z0 - 0.03 * wLen);
+        const b = new THREE.Vector3(s * (xBase + 0.20 * wLen), y0 - (0.022 + i * 0.016) * wLen, z0 - 0.09 * wLen);
         tube.update(
           (t, out) => {
             const u = 1 - t;
@@ -1670,6 +1895,21 @@ export class KuroCatEngine3D {
       contour.jawSquareness.toFixed(3),
       contour.earShape,
       contour.earScale.toFixed(3),
+      contour.earSpacing.toFixed(3),
+      contour.earTilt.toFixed(3),
+      contour.eyeScale.toFixed(3),
+      contour.eyeAspect.toFixed(3),
+      contour.eyeSpacing.toFixed(3),
+      contour.eyeOffsetY.toFixed(3),
+      contour.noseShape,
+      contour.noseScale.toFixed(3),
+      contour.noseOffsetY.toFixed(3),
+      contour.mouthShape,
+      contour.mouthScale.toFixed(3),
+      contour.mouthOffsetY.toFixed(3),
+      contour.whiskerLength.toFixed(3),
+      contour.eyebrowStyle,
+      contour.blushScale.toFixed(3),
       contour.bodyChubbiness.toFixed(3),
     ].join('|');
     if (key === this.lastContourKey) return;
@@ -1741,14 +1981,21 @@ export class KuroCatEngine3D {
     this.bodyMesh.geometry = nextBodyGeo;
     oldBodyGeo.dispose();
 
-    // Update 3D ear geometry & mount offsets so ears sit proudly ON TOP of flat/wide/square crowns
+    // Update 3D ear geometry & mount offsets so ears sit cleanly on flat/wide/square crowns or fold/droop naturally
     const nextEarGeo = this.buildEarGeometry(contour.earShape);
     const oldEarGeo = this.earGeo;
     this.earGeo = nextEarGeo;
     this.earMountX =
-      0.295 * mix(1.0, hw, 0.78) +
-      jawSq * 0.075 +
-      (contour.earShape === 'round' ? 0.05 : 0);
+      (0.295 * mix(1.0, hw, 0.78) +
+        jawSq * 0.075 +
+        (contour.earShape === 'round'
+          ? 0.05
+          : contour.earShape === 'folded'
+            ? 0.06
+            : contour.earShape === 'floppy'
+              ? 0.145
+              : 0)) *
+      contour.earSpacing;
     this.earMountY =
       0.255 +
       jawSq * 0.105 +
@@ -1756,16 +2003,24 @@ export class KuroCatEngine3D {
         ? 0.068
         : contour.earShape === 'small'
           ? 0.065
-          : 0) +
+          : contour.earShape === 'folded'
+            ? 0.025
+            : contour.earShape === 'floppy'
+              ? -0.075
+              : 0) +
       (isOval ? 0.028 : 0);
     this.earBaseTilt =
-      contour.earShape === 'wide'
+      (contour.earShape === 'wide'
         ? 0.24
         : contour.earShape === 'round'
           ? 0.30
           : contour.earShape === 'small'
             ? 0.14
-            : 0.06;
+            : contour.earShape === 'folded'
+              ? 0.44
+              : contour.earShape === 'floppy'
+                ? 0.16
+                : 0.06) + contour.earTilt;
     this.earBaseScale = contour.earScale;
     for (const e of this.ears) {
       e.mesh.geometry = nextEarGeo;
@@ -1774,29 +2029,37 @@ export class KuroCatEngine3D {
     }
     oldEarGeo.dispose();
 
-    // Re-conform curved eyes, blush, closed arcs, squint slits, nose, mouth & whiskers onto the new face surface
+    // Re-conform curved eyes, blush, closed arcs, squint slits, nose, mouth, blep, eyebrows & whiskers onto the new face surface
+    const eScale = contour.eyeScale;
+    const eAspect = contour.eyeAspect;
+    this.eyePatchRx = EYE_MAX_RX * Math.max(1.0, eScale * 1.05);
+    this.eyePatchRy = EYE_MAX_RY * Math.max(1.0, eScale * eAspect * 1.05);
+    const lyEye = 0.105 - contour.eyeOffsetY * 0.085;
+    const bScale = contour.blushScale;
+
     for (const e of this.eyes) {
-      const lx = e.s * 0.232;
-      const ly = 0.105;
+      const lx = e.s * 0.232 * contour.eyeSpacing;
+      const ly = lyEye;
       const oldEye = e.mesh.geometry;
-      e.mesh.geometry = this.makeCurvedFacePatchGeo(lx, ly, EYE_MAX_RX, EYE_MAX_RY, 0.024, 20);
+      e.mesh.geometry = this.makeCurvedFacePatchGeo(lx, ly, this.eyePatchRx, this.eyePatchRy, 0.024, 20);
       oldEye.dispose();
 
       const oldBlush = e.blush.geometry;
       e.blush.geometry = this.makeCurvedFacePatchGeo(
         lx + e.s * (0.06 * hw),
         ly - 0.155,
-        0.10,
-        0.056,
+        0.10 * bScale,
+        0.056 * bScale,
         0.016,
         8,
       );
       oldBlush.dispose();
 
+      const arcHalf = 0.132 * eScale;
       e.closedArcTube.update(
         (t, out) => {
-          const x = lx + mix(-0.132, 0.132, t);
-          const y = ly - 0.042 * Math.sin(t * Math.PI);
+          const x = lx + mix(-arcHalf, arcHalf, t);
+          const y = ly - 0.042 * eScale * Math.sin(t * Math.PI);
           out.set(x, y, this.surfaceZ(x, y) + 0.028);
         },
         (t) => 0.012 + 0.005 * Math.sin(t * Math.PI),
@@ -1804,40 +2067,49 @@ export class KuroCatEngine3D {
 
       e.squintSlitTube.update(
         (t, out) => {
-          const x = lx + mix(-0.132, 0.132, t);
-          const y = ly - 0.012 * Math.sin(t * Math.PI) - e.s * (t - 0.5) * 0.016;
+          const x = lx + mix(-arcHalf, arcHalf, t);
+          const y = ly - 0.012 * eScale * Math.sin(t * Math.PI) - e.s * (t - 0.5) * 0.016 * eScale;
           out.set(x, y, this.surfaceZ(x, y) + 0.028);
         },
         (t) => 0.011 + 0.004 * Math.sin(t * Math.PI),
       );
 
+      const happyHalf = 0.128 * eScale;
       e.happyArcTube.update(
         (t, out) => {
-          const x = lx + mix(-0.128, 0.128, t);
-          const y = ly - 0.014 + 0.050 * Math.sin(t * Math.PI);
+          const x = lx + mix(-happyHalf, happyHalf, t);
+          const y = ly - 0.014 + 0.050 * eScale * Math.sin(t * Math.PI);
           out.set(x, y, this.surfaceZ(x, y) + 0.028);
         },
         (t) => 0.012 + 0.005 * Math.sin(t * Math.PI),
       );
     }
 
-    const NY = -0.042;
+    const NY = -0.042 - contour.noseOffsetY * 0.055;
+    this.noseBaseY = NY;
+    const oldNoseGeo = this.noseMesh.geometry;
+    this.noseMesh.geometry = this.buildNoseGeometry(contour.noseShape, contour.noseScale);
+    oldNoseGeo.dispose();
     this.noseMesh.position.set(0, NY, this.surfaceZ(0, NY) + 0.024);
+
     const yawnZ = Math.max(this.surfaceZ(0, -0.092), this.surfaceZ(0, -0.152)) + 0.030;
     this.yawnGroup.position.set(0, -0.092, yawnZ);
     this.lickTongueMesh.position.set(0, -0.112, this.surfaceZ(0, -0.112) + 0.032);
-    this.mouthTube.update(
-      (t, out) => {
-        const x = mix(-0.064, 0.064, t);
-        const y = NY - 0.032 - 0.020 * Math.sin((Math.abs(x) / 0.064) * Math.PI);
-        out.set(x, y, this.surfaceZ(x, y) + 0.024);
-      },
-      () => 0.0050,
-    );
+    this.updateMouthTube(contour.mouthShape, contour.mouthScale, NY, contour.mouthOffsetY);
+
+    const blepY = NY - 0.034 - contour.mouthOffsetY * 0.048;
+    this.blepMesh.position.set(0, blepY, this.surfaceZ(0, blepY - 0.02) + 0.022);
+    this.blepMesh.scale.setScalar(contour.mouthScale);
 
     const oldWhiskers = this.whiskerMesh.geometry;
     this.whiskerMesh.geometry = this.buildWhiskersGeometry();
     oldWhiskers.dispose();
+    this.whiskerMesh.visible = contour.whiskerLength > 0.01;
+
+    const oldBrows = this.eyebrowMesh.geometry;
+    this.eyebrowMesh.geometry = this.buildEyebrowsGeometry(contour);
+    oldBrows.dispose();
+    this.eyebrowMesh.visible = contour.eyebrowStyle !== 'none';
   }
 
   /** Mathematically exact Z depth on the front face of our Lathe/squircle body at headMount-local (x, y). */
@@ -1997,6 +2269,7 @@ export class KuroCatEngine3D {
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.canvas.removeEventListener('webglcontextrestored', this.handleContextRestored);
     this.stop();
     this.desk.dispose();
     this.scene.traverse((obj) => {
@@ -2138,17 +2411,37 @@ export class KuroCatEngine3D {
     this.tuckLineMat.color.set(p.isDarkFur ? '#b2b8c4' : '#7b6e64');
     this.tuckLineMat.opacity = p.isDarkFur ? 0.36 : 0.24;
 
-    this.faceGroup.visible = Boolean(p.nose);
+    const showNose = Boolean(p.nose) && this.currentContour.noseShape !== 'none';
+    this.mouthEnabled = Boolean(p.mouth) && this.currentContour.mouthShape !== 'none';
+    this.faceGroup.visible = showNose || this.mouthEnabled;
+    this.noseMesh.visible = showNose;
+    this.mouthTube.mesh.visible = this.mouthEnabled;
+    this.blepMesh.visible = this.mouthEnabled && this.currentContour.mouthShape === 'blep';
     if (p.nose) this.noseMat.color.set(p.nose);
     if (p.mouth) this.mouthMat.color.set(p.mouth);
+    this.eyebrowMat.color.set(p.eyebrow || p.lid);
+
+    const pupilShapeCode =
+      this.currentContour.pupilShape === 'round'
+        ? 1
+        : this.currentContour.pupilShape === 'slit'
+          ? 2
+          : this.currentContour.pupilShape === 'dot'
+            ? 3
+            : this.currentContour.pupilShape === 'star'
+              ? 4
+              : 0;
 
     const lashCol = p.isDarkFur ? '#0b0c10' : p.lid;
     for (const e of this.eyes) {
-      (e.mat.uniforms.uEyeTop.value as THREE.Color).set(p.eyeTop);
-      (e.mat.uniforms.uEyeBottom.value as THREE.Color).set(p.eyeBottom);
+      const topCol = e.s === 1 && p.rightEyeTop ? p.rightEyeTop : p.eyeTop;
+      const botCol = e.s === 1 && p.rightEyeBottom ? p.rightEyeBottom : p.eyeBottom;
+      (e.mat.uniforms.uEyeTop.value as THREE.Color).set(topCol);
+      (e.mat.uniforms.uEyeBottom.value as THREE.Color).set(botCol);
       (e.mat.uniforms.uPupilCol.value as THREE.Color).set(p.pupil);
       (e.mat.uniforms.uLashCol.value as THREE.Color).set(lashCol);
       e.mat.uniforms.uRestSquint.value = this.currentContour.eyeSquint;
+      e.mat.uniforms.uPupilShape.value = pupilShapeCode;
       e.mat.uniforms.uIs3D.value = this.renderStyle === '3d' ? 1.0 : 0.0;
       e.mat.uniforms.uLimbalAmt.value = p.isDarkFur ? 0.22 : 0.56;
     }
@@ -2189,9 +2482,48 @@ export class KuroCatEngine3D {
 
   public setKeyboardConfig(layout: KeyboardLayoutId, orient: KeyboardOrientation): void {
     this.desk.rebuildBoard(layout, orient);
+    this.syncDeskFloorShadows();
     this.paws.L.keyId = null;
     this.paws.R.keyId = null;
     this.tailTap.keyId = null;
+  }
+
+  public setChromaKeyBg(hex: string | null): void {
+    const normalized = typeof hex === 'string' && hex.trim() ? hex.trim() : null;
+    this.chromaKeyBg = normalized;
+    this.applyChromaKeyState();
+    this.wakeRendering();
+  }
+
+  private applyChromaKeyState(): void {
+    if (this.disposed) return;
+    if (this.chromaKeyBg) {
+      this.renderer.setClearColor(new THREE.Color(this.chromaKeyBg), 1);
+      this.catShadow.visible = false;
+    } else {
+      this.renderer.setClearColor(0x000000, 0);
+      this.catShadow.visible = clamp(this.peekAmt, 0, 1) < 0.35;
+    }
+    this.syncDeskFloorShadows();
+  }
+
+  private syncDeskFloorShadows(): void {
+    const showFloorShadows = this.chromaKeyBg === null;
+    this.desk.deskGroup.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      if (!(obj.geometry instanceof THREE.PlaneGeometry)) return;
+      if (obj.renderOrder !== 0) return;
+      if (Math.abs(obj.rotation.x + Math.PI / 2) > 0.01 || obj.position.y > 0.01) return;
+      const mat = obj.material;
+      if (
+        mat instanceof THREE.MeshBasicMaterial &&
+        mat.transparent &&
+        !mat.depthWrite &&
+        Boolean(mat.map)
+      ) {
+        obj.visible = showFloorShadows;
+      }
+    });
   }
 
   public setTailKeyConfig(mode: TailKeyMode, keyIds: readonly string[]): void {
@@ -3345,7 +3677,7 @@ export class KuroCatEngine3D {
     this.desk.update(dt, this.leftMouseDown, this.rightMouseDown, deskHopY, this.privacyClose);
     this.desk.deskGroup.position.y = -peek * 1.65;
     this.desk.deskGroup.visible = peek < 0.85;
-    this.catShadow.visible = peek < 0.35;
+    this.catShadow.visible = this.chromaKeyBg === null && peek < 0.35;
 
     // 4) Spine lean, hunch, squash & breathing on continuous one-piece body (+ scruff lift & pendulum!)
     const mousing = this.isMousing();
@@ -3431,15 +3763,16 @@ export class KuroCatEngine3D {
       this.catRoot.position.set(baseRootX, baseRootY, baseRootZ);
       this.catRoot.rotation.z = baseRotZ;
     }
+    const scruffSwingClamped = clamp(this.scruffSwing, -1.6, 1.6);
     for (const hp of this.hindPaws) {
       hp.mesh.visible = peek < 0.30;
       hp.mesh.position.set(
-        hp.baseX + scruff * this.scruffSwing * 0.17,
-        hp.baseY - scruff * 0.11 + Math.abs(this.scruffSwing) * scruff * 0.025,
-        hp.baseZ - scruff * 0.04,
+        hp.baseX * (1 - scruff * 0.28) + scruff * scruffSwingClamped * 0.04,
+        hp.baseY - scruff * 0.10 + Math.abs(scruffSwingClamped) * scruff * 0.015,
+        hp.baseZ + scruff * 0.05,
       );
-      hp.mesh.rotation.x = scruff * 0.48;
-      hp.mesh.rotation.z = scruff * this.scruffSwing * 0.24;
+      hp.mesh.rotation.x = scruff * 0.45;
+      hp.mesh.rotation.z = scruff * scruffSwingClamped * 0.14;
     }
 
     // 5) Head pose & silky eye tracking
@@ -3543,10 +3876,13 @@ export class KuroCatEngine3D {
       this.yawnGroup.visible = true;
       const y = Math.min(1, this.yawnAmt);
       this.yawnGroup.scale.set(0.45 + 0.55 * y, 0.14 + 0.86 * y, 1);
-      this.mouthTube.mesh.visible = this.yawnAmt < 0.18;
+      const showRestMouth = this.mouthEnabled && this.yawnAmt < 0.18;
+      this.mouthTube.mesh.visible = showRestMouth;
+      this.blepMesh.visible = showRestMouth && this.currentContour.mouthShape === 'blep';
     } else {
       this.yawnGroup.visible = false;
-      this.mouthTube.mesh.visible = true;
+      this.mouthTube.mesh.visible = this.mouthEnabled;
+      this.blepMesh.visible = this.mouthEnabled && this.currentContour.mouthShape === 'blep';
     }
     if (this.groomLickAmt > 0.08) {
       this.lickTongueMesh.visible = true;
@@ -3556,7 +3892,7 @@ export class KuroCatEngine3D {
       this.lickTongueMesh.visible = false;
     }
     if (this.noseMesh) {
-      this.noseMesh.position.y = -0.042 + this.boopCrossEye * 0.018 + this.yawnAmt * 0.014;
+      this.noseMesh.position.y = this.noseBaseY + this.boopCrossEye * 0.018 + this.yawnAmt * 0.014;
     }
 
     // 5b) Smooth drop-on gaming headset animation + reactive KuroCat-lime/cyan RGB earcup glow!
@@ -3632,7 +3968,11 @@ export class KuroCatEngine3D {
     const isBlinkClosed = !isSleepOrPrivacy && !isHappyArc && !isPetSquint && blinkClose > 0.58;
     const showOpenEye = !isSleepOrPrivacy && !isHappyArc && !isPetSquint && !isBlinkClosed;
 
-    const blushGoal = this.chinAmt > 0.22 ? 0.58 : petActive ? 0.46 : this.kneadAmt > 0.25 ? 0.36 : 0;
+    const blushFloor = this.currentContour.blushAlways ? 0.38 : 0;
+    const blushGoal = Math.max(
+      blushFloor,
+      this.chinAmt > 0.22 ? 0.58 : petActive ? 0.46 : this.kneadAmt > 0.25 ? 0.36 : 0,
+    );
     this.blushMat.opacity += (blushGoal - this.blushMat.opacity) * approach(8, dt);
     if (this.blushMat.opacity < 0.004 && blushGoal === 0) this.blushMat.opacity = 0;
     const showBlush = this.blushMat.opacity > 0.004;
@@ -3664,31 +4004,59 @@ export class KuroCatEngine3D {
 
       if (showOpenEye) {
         const lidClose = Math.max(blinkClose * 0.8, dozeClose * 0.86);
-        const irisRx = 0.156 * (1 + curious * 0.06 + scruff * 0.09);
-        const irisRy = Math.max(0.018, 0.136 * (1 + curious * 0.09 + scruff * 0.13) * (1 - lidClose));
+        const eScale = this.currentContour.eyeScale;
+        const eAspect = this.currentContour.eyeAspect;
+        const irisRx = 0.156 * eScale * (1 + curious * 0.06 + scruff * 0.09);
+        const irisRy = Math.max(0.018, 0.136 * eScale * eAspect * (1 + curious * 0.09 + scruff * 0.13) * (1 - lidClose));
 
         const boopShrink = 1 - this.boopCrossEye * 0.22;
-        const pRx = clamp(
-          (0.064 + curious * 0.048 + scruff * 0.036 + this.excite * 0.008) * (1 - cross * 0.32) * boopShrink,
-          0.034,
-          irisRx - 0.018,
-        );
-        const pRy = clamp(
-          (0.094 + curious * 0.020 + scruff * 0.022) * (1 - cross * 0.08) * boopShrink,
-          0.044,
-          irisRy - 0.008,
-        );
+        const pMul = this.currentContour.pupilScale * eScale;
+        const pShape = this.currentContour.pupilShape;
+        let pRx: number;
+        let pRy: number;
+        if (pShape === 'round') {
+          const rP = (0.076 + curious * 0.036 + scruff * 0.030 + this.excite * 0.006) * pMul * (1 - cross * 0.24) * boopShrink;
+          pRx = clamp(rP, 0.028, irisRx - 0.016);
+          pRy = clamp(rP, 0.028, irisRy - 0.008);
+        } else if (pShape === 'slit') {
+          pRx = clamp(
+            (0.030 + curious * 0.048 + scruff * 0.040 + this.excite * 0.004) * pMul * (1 - cross * 0.35) * boopShrink,
+            0.016,
+            irisRx - 0.018,
+          );
+          pRy = clamp(
+            (0.104 + curious * 0.016 + scruff * 0.018) * pMul * eAspect * boopShrink,
+            0.036,
+            irisRy - 0.006,
+          );
+        } else if (pShape === 'dot') {
+          const rDot = (0.040 + curious * 0.018 + scruff * 0.016) * pMul * boopShrink;
+          pRx = clamp(rDot, 0.018, irisRx - 0.018);
+          pRy = clamp(rDot, 0.018, irisRy - 0.008);
+        } else {
+          pRx = clamp(
+            (0.064 + curious * 0.048 + scruff * 0.036 + this.excite * 0.008) * pMul * (1 - cross * 0.32) * boopShrink,
+            0.026,
+            irisRx - 0.018,
+          );
+          pRy = clamp(
+            (0.094 + curious * 0.020 + scruff * 0.022) * pMul * eAspect * (1 - cross * 0.08) * boopShrink,
+            0.034,
+            irisRy - 0.008,
+          );
+        }
 
-        const maxTx = Math.max(0.024, irisRx - pRx - 0.012);
-        const maxTy = Math.max(0.016, irisRy - pRy - 0.008);
+        const maxTx = Math.max(0.020, irisRx - pRx - 0.012);
+        const maxTy = Math.max(0.014, irisRy - pRy - 0.008);
         // Cross-eyed convergence on nose boop: left eye (s=-1) pulls +X right, right eye (s=+1) pulls -X left!
         const gazeXEff = mix(gazeX, -e.s * 0.94, this.boopCrossEye);
         const gazeYEff = mix(gazeY, -0.45, this.boopCrossEye);
         const px = clamp(gazeXEff * maxTx, -maxTx, maxTx);
         const py = clamp(gazeYEff * maxTy, -maxTy, maxTy);
 
-        (e.mat.uniforms.uScale.value as THREE.Vector2).set(irisRx / EYE_MAX_RX, irisRy / EYE_MAX_RY);
-        e.mat.uniforms.uTilt.value = e.s * -(0.06 + 0.06 * (typingActive ? 1 : 0)) * (1 - scruff * 0.8);
+        (e.mat.uniforms.uScale.value as THREE.Vector2).set(irisRx / this.eyePatchRx, irisRy / this.eyePatchRy);
+        e.mat.uniforms.uTilt.value =
+          e.s * -((0.06 + 0.06 * (typingActive ? 1 : 0)) * (1 - scruff * 0.8) + this.currentContour.eyeTilt);
         (e.mat.uniforms.uPupilCenter.value as THREE.Vector2).set(px / irisRx, py / irisRy);
         (e.mat.uniforms.uPupilRad.value as THREE.Vector2).set(pRx / irisRx, pRy / irisRy);
         e.mat.uniforms.uCross.value = Math.max(cross, this.tailGlanceAmt * 0.42);
@@ -3825,8 +4193,11 @@ export class KuroCatEngine3D {
       const tuckHome = this.attachLocal(this.tmpPawLocal, this.tmpV3);
 
       if (activeForScruff) {
-        const sway = this.scruffSwing * 0.34 + Math.sin(t * 5.6 + paw.side) * 0.055;
-        this.tmpPawLocal.set(paw.side * 0.30 + sway, 0.13 - scruff * 0.12 + Math.abs(this.scruffSwing) * 0.045, 0.58);
+        // Keep front paws short, plush, and tucked naturally in front of the chest while scruffed
+        // (body root already swings as a pendulum; clamped local sway prevents arms stretching like noodles!)
+        const sway = scruffSwingClamped * 0.045 + Math.sin(t * 5.2 + paw.side * 0.7) * 0.020;
+        const bobY = Math.abs(scruffSwingClamped) * 0.016 + Math.cos(t * 4.6 + paw.side) * 0.012;
+        this.tmpPawLocal.set(paw.side * 0.31 + sway, 0.46 - scruff * 0.06 + bobY, 0.60);
         const dangleWorld = this.attachLocal(this.tmpPawLocal, this.tmpV1);
         paw.pos.copy(paw.spring.step(dangleWorld, dt));
         paw.last.copy(paw.pos);
@@ -3927,6 +4298,7 @@ export class KuroCatEngine3D {
     updatePaw(this.paws.L, true);
     updatePaw(this.paws.R, false);
 
+    const scruffBlend = scruff * peekCalm;
     for (const arm of this.arms) {
       const pawTrack = arm.s < 0 ? this.paws.L : this.paws.R;
       this.attachLocal(arm.shoulderLocal, arm.shoulder);
@@ -3935,19 +4307,24 @@ export class KuroCatEngine3D {
       const tuck = pawTrack.tuckWeight;
       const onMouse = arm.s < 0 && mousing;
       const reach = arm.shoulder.distanceTo(arm.hand);
-      const lift = mix(0.24, 0.06, clamp((reach - 0.85) / 0.85, 0, 1)) * (1 - tuck * 0.65) * peekCalm;
+      const flareScale = (1 - tuck * 0.85) * (1 - scruffBlend * 0.86);
+      const lift =
+        mix(0.24, 0.06, clamp((reach - 0.85) / 0.85, 0, 1)) *
+        (1 - tuck * 0.65) *
+        (1 - scruffBlend * 0.85) *
+        peekCalm;
 
       this.tmpArmOff.set(
-        arm.s * (onMouse ? 0.09 : 0.14 * (1 - tuck * 0.85)) * peekCalm,
-        (-0.06 * peekCalm) + lift * 0.32,
-        mix(0.18, 0.02, tuck) * peekCalm,
+        arm.s * (onMouse ? 0.09 : 0.14 * flareScale) * peekCalm,
+        (-0.06 - 0.05 * scruffBlend) * peekCalm + lift * 0.32,
+        (mix(0.18, 0.02, tuck) * (1 - scruffBlend * 0.65) + 0.05 * scruffBlend) * peekCalm,
       );
       arm.c1.copy(arm.shoulder).lerp(arm.hand, 0.36).add(this.tmpArmOff);
 
       this.tmpArmOff.set(
-        arm.s * (onMouse ? 0.05 : 0.05 * (1 - tuck)) * peekCalm,
-        lift * 0.85,
-        mix(0.12, 0.02, tuck) * peekCalm,
+        arm.s * (onMouse ? 0.05 : 0.05 * (1 - tuck) * (1 - scruffBlend * 0.85)) * peekCalm,
+        lift * 0.85 - 0.02 * scruffBlend * peekCalm,
+        (mix(0.12, 0.02, tuck) * (1 - scruffBlend * 0.65) + 0.03 * scruffBlend) * peekCalm,
       );
       arm.c2.copy(arm.shoulder).lerp(arm.hand, 0.72).add(this.tmpArmOff);
 
@@ -3976,19 +4353,27 @@ export class KuroCatEngine3D {
         (u) =>
           mix(0.118, mix(0.082, 0.094, peek), smoothstep(0.0, 0.88, u)) *
           mix(1.0, 0.76, tuck * (1 - u * 0.4)) *
+          mix(1.0, 0.88, scruffBlend * (1 - u * 0.35)) *
           mix(1.0, 0.96, peek),
       );
 
-      // Soft sculpted plush paw resting cleanly right behind top edge of keyboard when calm, or gripping screen border flush when peeking!
+      // Soft sculpted plush paw resting cleanly right behind top edge of keyboard when calm,
+      // drooping softly in front of chest when scruffed, or gripping screen border flush when peeking!
       const pawScale = mix(1.0, 0.94, tuck);
       arm.paw.position.set(arm.hand.x, arm.hand.y - 0.010 * peekCalm, arm.hand.z + 0.014 * peekCalm);
       arm.paw.scale.set(
-        mix(0.126, 0.102, peek) * pawScale,
-        mix(0.080, 0.142, peek) * pawScale,
-        mix(0.118, 0.118, peek) * pawScale,
+        mix(mix(0.126, 0.114, scruffBlend), 0.102, peek) * pawScale,
+        mix(mix(0.080, 0.094, scruffBlend), 0.142, peek) * pawScale,
+        mix(0.118, 0.112, scruffBlend) * pawScale,
       );
-      arm.paw.rotation.y = Math.atan2(arm.hand.x - arm.c2.x, Math.max(0.1, arm.hand.z - arm.c2.z)) * 0.42 * peekCalm;
-      arm.paw.rotation.z = peek > 0.01 ? peekEdgeSign * Math.PI * 0.5 * peek : 0;
+      arm.paw.rotation.x = scruffBlend * 0.64;
+      arm.paw.rotation.y =
+        Math.atan2(arm.hand.x - arm.c2.x, Math.max(0.1, arm.hand.z - arm.c2.z)) *
+        0.42 *
+        peekCalm *
+        (1 - scruffBlend * 0.65);
+      arm.paw.rotation.z =
+        peek > 0.01 ? peekEdgeSign * Math.PI * 0.5 * peek : baseRotZ * 0.72 * scruffBlend;
     }
 
     // 10) Floating Key Bubbles, Anger Mark 💢 & Sleep Zzz FX

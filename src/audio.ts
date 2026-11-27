@@ -1,4 +1,5 @@
 import { TYPING_SOUND_WAV_B64, type TypingSoundSlot } from './typingSoundData';
+import { PURR_SOUND_MP3_B64 } from './purrSoundData';
 
 const KEY_DOWN_SLOTS: readonly TypingSoundSlot[] = ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7'];
 const KEY_UP_SLOTS: readonly TypingSoundSlot[] = ['up0', 'up1', 'up2', 'up3'];
@@ -10,11 +11,15 @@ class CatAudio {
   private typingSoundEnabled = false;
   private graphReady = false;
   private masterGain: GainNode | null = null;
-  private warmFilter: BiquadFilterNode | null = null;
-  private flutterLfo: OscillatorNode | null = null;
+  private purrFilter: BiquadFilterNode | null = null;
+  private purrSource: AudioBufferSourceNode | null = null;
+  private purrBuffer: AudioBuffer | null = null;
+  private purrFallbackBuffer: AudioBuffer | null = null;
+  private purrDecodePromise: Promise<void> | null = null;
+  private purrDecodeFailedCtx: AudioContext | null = null;
+  private purrStopTimer: number | null = null;
   private currentIntensity = 0;
   private currentPurrTone: 'normal' | 'chin' | 'knead' = 'normal';
-  private sources: AudioScheduledSourceNode[] = [];
   private deviceWatcherAttached = false;
   private rebuildTimer: number | null = null;
   private typingBuffers: Map<TypingSoundSlot, AudioBuffer> | null = null;
@@ -89,21 +94,40 @@ class CatAudio {
     }
   }
 
+  private clearPurrStopTimer(): void {
+    if (this.purrStopTimer !== null && typeof window !== 'undefined') {
+      window.clearTimeout(this.purrStopTimer);
+    }
+    this.purrStopTimer = null;
+  }
+
+  private stopPurrSource(): void {
+    this.clearPurrStopTimer();
+    const src = this.purrSource;
+    this.purrSource = null;
+    if (!src) return;
+    try {
+      src.stop();
+    } catch {
+      // already stopped
+    }
+    try {
+      src.disconnect();
+    } catch {
+      // already disconnected
+    }
+  }
+
   private teardownGraph(): void {
     const ctx = this.ctx;
-    for (const src of this.sources) {
+    this.stopPurrSource();
+    if (this.purrFilter) {
       try {
-        src.stop();
-      } catch {
-        // already stopped
-      }
-      try {
-        src.disconnect();
+        this.purrFilter.disconnect();
       } catch {
         // already disconnected
       }
     }
-    this.sources = [];
     if (this.masterGain) {
       try {
         this.masterGain.disconnect();
@@ -112,8 +136,11 @@ class CatAudio {
       }
     }
     this.masterGain = null;
-    this.warmFilter = null;
-    this.flutterLfo = null;
+    this.purrFilter = null;
+    this.purrBuffer = null;
+    this.purrFallbackBuffer = null;
+    this.purrDecodePromise = null;
+    this.purrDecodeFailedCtx = null;
     this.graphReady = false;
     this.typingBuffers = null;
     this.typingDecodePromise = null;
@@ -140,19 +167,8 @@ class CatAudio {
     this.teardownGraph();
     if (keepIntensity > 0.01 && this.ensurePurrGraph() && this.ctx && this.masterGain) {
       try {
-        const now = this.ctx.currentTime;
-        if (Number.isFinite(now)) {
-          const gainScale = tone === 'chin' ? 0.30 : tone === 'knead' ? 0.16 : 0.26;
-          this.masterGain.gain.setTargetAtTime(keepIntensity * gainScale, now, 0.05);
-          if (this.warmFilter) {
-            const freq = tone === 'chin' ? 158 : tone === 'knead' ? 175 : 190;
-            this.warmFilter.frequency.setTargetAtTime(freq, now, 0.05);
-          }
-          if (this.flutterLfo) {
-            const lfoHz = tone === 'chin' ? 22.0 : tone === 'knead' ? 23.5 : 24.5;
-            this.flutterLfo.frequency.setTargetAtTime(lfoHz, now, 0.05);
-          }
-        }
+        this.startPurrLoopIfNeeded(this.ctx, true);
+        this.applyPurrParams(this.ctx, keepIntensity, tone, 0.05);
       } catch {
         // Ignore scheduling errors if audio device vanished again mid-rebuild
       }
@@ -198,6 +214,179 @@ class CatAudio {
     return ctx;
   }
 
+  /**
+   * Trims cross-platform MP3 encoder priming/padding on decoded PCM and applies an
+   * equal-power cosine/sine crossfade so `AudioBufferSourceNode.loop = true` is 100% seamless
+   * across Windows WebView2, macOS WKWebView, and Linux WebKitGTK.
+   */
+  private static buildSeamlessPurrBuffer(ctx: AudioContext, decoded: AudioBuffer): AudioBuffer {
+    const sr = decoded.sampleRate;
+    const raw = decoded.getChannelData(0);
+    const trim = Math.min(Math.floor(sr * 0.12), Math.floor(raw.length * 0.08));
+    const usableLen = Math.max(1024, raw.length - trim * 2);
+    const xfade = Math.min(Math.floor(sr * 0.55), Math.floor(usableLen * 0.22));
+    const loopLen = Math.max(512, usableLen - xfade);
+
+    const outBuf = ctx.createBuffer(1, loopLen, sr);
+    const out = outBuf.getChannelData(0);
+    for (let i = 0; i < loopLen; i++) {
+      out[i] = raw[trim + i];
+    }
+    for (let i = 0; i < xfade; i++) {
+      const angle = (i / xfade) * Math.PI * 0.5;
+      const head = out[i];
+      const tail = raw[trim + loopLen + i];
+      out[i] = head * Math.sin(angle) + tail * Math.cos(angle);
+    }
+    return outBuf;
+  }
+
+  /**
+   * Lightweight dual-phase glottal-pulse fallback buffer (~3.7 s seamless loop) used only for the
+   * first ~15 ms while the real CC0 cat purr MP3 decodes asynchronously, or on restricted backends.
+   */
+  private static buildGlottalFallbackBuffer(ctx: AudioContext): AudioBuffer {
+    const sr = ctx.sampleRate;
+    const cycleDur = 1.85;
+    const totalDur = cycleDur * 2;
+    const len = Math.max(2048, Math.floor(sr * totalDur));
+    const tmp = new Float32Array(len);
+
+    let phase = 0;
+    let lp1 = 0;
+    let lp2 = 0;
+    let lp3 = 0;
+    let hp = 0;
+    let prevIn = 0;
+    let jitter = 0;
+
+    for (let i = 0; i < len; i++) {
+      const t = i / sr;
+      const cycPos = (t % cycleDur) / cycleDur;
+      let env = 0.05;
+      let isExhale = false;
+      if (cycPos < 0.46) {
+        env = Math.pow(Math.sin((cycPos / 0.46) * Math.PI), 0.65) * 0.86;
+      } else if (cycPos >= 0.52 && cycPos < 0.95) {
+        isExhale = true;
+        env = Math.pow(Math.sin(((cycPos - 0.52) / 0.43) * Math.PI), 0.58);
+      }
+      jitter = jitter * 0.9992 + (Math.random() * 2 - 1) * 0.045;
+      phase += ((isExhale ? 27.6 : 25.2) + jitter * 1.4) / sr;
+      if (phase >= 1) phase -= 1;
+
+      let glottal = 0;
+      if (phase < 0.38) {
+        glottal = 0.5 * (1 - Math.cos(Math.PI * (phase / 0.38)));
+      } else if (phase < 0.54) {
+        glottal = Math.cos(0.5 * Math.PI * ((phase - 0.38) / 0.16));
+      }
+      const click = phase > 0.48 && phase < 0.62 ? Math.sin(((phase - 0.48) / 0.14) * Math.PI) * 0.30 : 0;
+      const air = (Math.random() * 2 - 1) * (0.07 + 0.14 * glottal) * (isExhale ? 1.15 : 0.85);
+      const raw = ((glottal - 0.28) * 1.15 + click + air) * env;
+
+      lp1 += (raw - lp1) * 0.065;
+      lp2 += (lp1 - lp2) * 0.11;
+      lp3 += (raw - lp3) * 0.24;
+      const shaped = lp2 * 1.55 + (lp3 - lp2) * 0.48;
+      hp = 0.996 * (hp + shaped - prevIn);
+      prevIn = shaped;
+      tmp[i] = hp;
+    }
+
+    const xf = Math.min(Math.floor(sr * 0.35), Math.floor(len * 0.2));
+    const loopLen = len - xf;
+    const outBuf = ctx.createBuffer(1, loopLen, sr);
+    const out = outBuf.getChannelData(0);
+    let sumSq = 0;
+    for (let i = 0; i < loopLen; i++) {
+      let s = tmp[i];
+      if (i < xf) {
+        const a = (i / xf) * Math.PI * 0.5;
+        s = s * Math.sin(a) + tmp[loopLen + i] * Math.cos(a);
+      }
+      out[i] = s;
+      sumSq += s * s;
+    }
+    const rms = Math.sqrt(sumSq / loopLen + 1e-12);
+    const gain = 0.14 / rms;
+    for (let i = 0; i < loopLen; i++) {
+      out[i] = Math.max(-0.92, Math.min(0.92, out[i] * gain));
+    }
+    return outBuf;
+  }
+
+  private prewarmPurrBuffer(ctx: AudioContext): void {
+    if (this.purrBuffer || this.purrDecodePromise || this.purrDecodeFailedCtx === ctx) return;
+    const targetCtx = ctx;
+    const task = (async () => {
+      try {
+        const ab = CatAudio.base64ToArrayBuffer(PURR_SOUND_MP3_B64);
+        const decoded = await CatAudio.decodeAudioBuffer(targetCtx, ab);
+        if (this.ctx !== targetCtx) return;
+        this.purrBuffer = CatAudio.buildSeamlessPurrBuffer(targetCtx, decoded);
+        // If user is currently petting on the temporary fallback buffer, smoothly swap to real cat audio
+        if (this.enabled && this.currentIntensity > 0.01 && this.graphReady && this.purrFilter) {
+          this.stopPurrSource();
+          this.startPurrLoopIfNeeded(targetCtx, true);
+          this.applyPurrParams(targetCtx, this.currentIntensity, this.currentPurrTone, 0.08);
+        }
+      } catch {
+        if (this.ctx === targetCtx) {
+          this.purrDecodeFailedCtx = targetCtx;
+        }
+      }
+    })()
+      .catch(() => {})
+      .finally(() => {
+        if (this.purrDecodePromise === task) {
+          this.purrDecodePromise = null;
+        }
+      });
+    this.purrDecodePromise = task;
+  }
+
+  private startPurrLoopIfNeeded(ctx: AudioContext, randomOffset: boolean): void {
+    this.clearPurrStopTimer();
+    if (this.purrSource || !this.purrFilter) return;
+    const buf =
+      this.purrBuffer ??
+      (this.purrFallbackBuffer ??= CatAudio.buildGlottalFallbackBuffer(ctx));
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const rate =
+      this.currentPurrTone === 'chin' ? 0.94 : this.currentPurrTone === 'knead' ? 0.98 : 1.0;
+    src.playbackRate.value = rate;
+    src.connect(this.purrFilter);
+    const offset =
+      randomOffset && buf.duration > 0.25 ? Math.random() * (buf.duration - 0.15) : 0;
+    src.start(0, offset);
+    this.purrSource = src;
+  }
+
+  private applyPurrParams(
+    ctx: AudioContext,
+    intensity: number,
+    tone: 'normal' | 'chin' | 'knead',
+    timeConst: number,
+  ): void {
+    if (!this.masterGain) return;
+    const now = ctx.currentTime;
+    if (!Number.isFinite(now)) return;
+    const gainScale = tone === 'chin' ? 0.54 : tone === 'knead' ? 0.28 : 0.44;
+    const targetGain = intensity > 0.01 ? intensity * gainScale : 0.0001;
+    this.masterGain.gain.setTargetAtTime(targetGain, now, timeConst);
+    if (this.purrFilter) {
+      const lpFreq = tone === 'chin' ? 2600 : tone === 'knead' ? 1900 : 3400;
+      this.purrFilter.frequency.setTargetAtTime(lpFreq, now, 0.12);
+    }
+    if (this.purrSource) {
+      const rate = tone === 'chin' ? 0.94 : tone === 'knead' ? 0.98 : 1.0;
+      this.purrSource.playbackRate.setTargetAtTime(rate, now, 0.12);
+    }
+  }
+
   private ensurePurrGraph(): boolean {
     if (!this.enabled || typeof window === 'undefined') return false;
     const ctx = this.ensureAudioContext();
@@ -205,88 +394,21 @@ class CatAudio {
     if (this.graphReady) return (ctx.state as string) !== 'closed';
 
     try {
-      const sampleRate = ctx.sampleRate;
-      const bufLen = Math.max(1, Math.floor(sampleRate * 3.0));
-      const noiseBuf = ctx.createBuffer(1, bufLen, sampleRate);
-      const data = noiseBuf.getChannelData(0);
-      // Smooth warm noise buffer for organic feline throat & breath texture
-      for (let i = 0; i < bufLen; i++) {
-        data[i] = Math.random() * 2 - 1;
-      }
+      const purrFilter = ctx.createBiquadFilter();
+      purrFilter.type = 'lowpass';
+      purrFilter.frequency.value = 3400;
+      purrFilter.Q.value = 0.7;
 
-      const noiseSrc = ctx.createBufferSource();
-      noiseSrc.buffer = noiseBuf;
-      noiseSrc.loop = true;
-
-      // Layer 1: Warm chest rumble (~190 Hz)
-      const warmFilter = ctx.createBiquadFilter();
-      warmFilter.type = 'bandpass';
-      warmFilter.frequency.value = 190;
-      warmFilter.Q.value = 1.15;
-      const warmGain = ctx.createGain();
-      warmGain.gain.value = 1.45;
-
-      // Layer 2: Soft breathy throat resonance (~520 Hz)
-      const breathFilter = ctx.createBiquadFilter();
-      breathFilter.type = 'bandpass';
-      breathFilter.frequency.value = 520;
-      breathFilter.Q.value = 1.4;
-      const breathGain = ctx.createGain();
-      breathGain.gain.value = 0.34;
-
-      // 24.5 Hz feline purr flutter amplitude modulation (0.30 .. 1.00)
-      const flutterGain = ctx.createGain();
-      flutterGain.gain.value = 0.65;
-      const flutterLfo = ctx.createOscillator();
-      flutterLfo.type = 'sine';
-      flutterLfo.frequency.value = 24.5;
-      const flutterDepth = ctx.createGain();
-      flutterDepth.gain.value = 0.35;
-      flutterLfo.connect(flutterDepth);
-      flutterDepth.connect(flutterGain.gain);
-
-      // Slow cozy breathing cadence (~0.68 Hz: inhale/exhale swell)
-      const breathCycleGain = ctx.createGain();
-      breathCycleGain.gain.value = 0.76;
-      const breathLfo = ctx.createOscillator();
-      breathLfo.type = 'sine';
-      breathLfo.frequency.value = 0.68;
-      const breathDepth = ctx.createGain();
-      breathDepth.gain.value = 0.24;
-      breathLfo.connect(breathDepth);
-      breathDepth.connect(breathCycleGain.gain);
-
-      // Soft lowpass polish so it sounds cozy on both speakers & headphones
-      const polishFilter = ctx.createBiquadFilter();
-      polishFilter.type = 'lowpass';
-      polishFilter.frequency.value = 1400;
-
-      // Master output gain (starts silent, ramps smoothly during petting)
       const master = ctx.createGain();
-      master.gain.value = 0;
+      master.gain.value = 0.0001;
 
-      noiseSrc.connect(warmFilter);
-      warmFilter.connect(warmGain);
-      warmGain.connect(flutterGain);
-
-      noiseSrc.connect(breathFilter);
-      breathFilter.connect(breathGain);
-      breathGain.connect(flutterGain);
-
-      flutterGain.connect(breathCycleGain);
-      breathCycleGain.connect(polishFilter);
-      polishFilter.connect(master);
+      purrFilter.connect(master);
       master.connect(ctx.destination);
 
-      noiseSrc.start();
-      flutterLfo.start();
-      breathLfo.start();
-
-      this.sources = [noiseSrc, flutterLfo, breathLfo];
+      this.purrFilter = purrFilter;
       this.masterGain = master;
-      this.warmFilter = warmFilter;
-      this.flutterLfo = flutterLfo;
       this.graphReady = true;
+      this.prewarmPurrBuffer(ctx);
 
       return true;
     } catch {
@@ -506,13 +628,14 @@ class CatAudio {
   }
 
   /**
-   * Smoothly drives real-time organic cat purring (0 = silent, 1 = full cozy purr).
+   * Smoothly drives real domestic cat purring (0 = silent, 1 = full cozy purr).
    * `tone`: 'normal' (head pet), 'chin' (deeper warm chest purr), 'knead' (gentle soft purr).
    */
   public setPurrIntensity(intensity: number, tone: 'normal' | 'chin' | 'knead' = 'normal'): void {
     const target = this.enabled ? Math.max(0, Math.min(1, intensity)) : 0;
     if (target <= 0.01 && !this.graphReady) return;
     if (Math.abs(target - this.currentIntensity) < 0.005 && tone === this.currentPurrTone) return;
+    const wasSilent = this.currentIntensity <= 0.01;
     this.currentIntensity = target;
     this.currentPurrTone = tone;
 
@@ -521,23 +644,24 @@ class CatAudio {
 
     if (target > 0.01) {
       this.safeResume(this.ctx);
+      this.prewarmPurrBuffer(this.ctx);
     }
 
     try {
-      const now = this.ctx.currentTime;
-      if (!Number.isFinite(now)) return;
-      const gainScale = tone === 'chin' ? 0.30 : tone === 'knead' ? 0.16 : 0.26;
-      const targetGain = target * gainScale;
-      const timeConst = target > 0.01 ? 0.14 : 0.22;
-      this.masterGain.gain.setTargetAtTime(targetGain, now, timeConst);
-
-      if (this.warmFilter) {
-        const freq = tone === 'chin' ? 158 : tone === 'knead' ? 175 : 190;
-        this.warmFilter.frequency.setTargetAtTime(freq, now, 0.16);
-      }
-      if (this.flutterLfo) {
-        const lfoHz = tone === 'chin' ? 22.0 : tone === 'knead' ? 23.5 : 24.5;
-        this.flutterLfo.frequency.setTargetAtTime(lfoHz, now, 0.16);
+      if (target > 0.01) {
+        this.startPurrLoopIfNeeded(this.ctx, wasSilent);
+        this.applyPurrParams(this.ctx, target, tone, 0.14);
+      } else {
+        this.applyPurrParams(this.ctx, 0, tone, 0.22);
+        this.clearPurrStopTimer();
+        if (typeof window !== 'undefined' && this.purrSource) {
+          this.purrStopTimer = window.setTimeout(() => {
+            this.purrStopTimer = null;
+            if (this.currentIntensity <= 0.01) {
+              this.stopPurrSource();
+            }
+          }, 950);
+        }
       }
     } catch {
       // Ignore AudioParam errors on suspended/closed WebView audio backends

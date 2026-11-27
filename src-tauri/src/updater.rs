@@ -1235,7 +1235,7 @@ fn install_macos_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String
              /usr/bin/tccutil reset ListenEvent com.kurocat.pet >/dev/null 2>&1 || true; \
              sleep 0.2; \
            fi; \
-           /usr/bin/open -n '{dst}'; \
+           /usr/bin/open -n '{dst}' --args --wait-pid {pid}; \
          else \
            if [ -d '{dst}.bak' ]; then mv '{dst}.bak' '{dst}'; fi; \
            /usr/bin/open '{url}'; \
@@ -1403,11 +1403,11 @@ mod tests {
     #[test]
     fn http_url_parser_handles_github_endpoints() {
         let (https, host, port, path) =
-            parse_http_url("https://api.github.com/repos/qianyiai/kurocat/releases/latest").unwrap();
+            parse_http_url("https://api.github.com/repos/qianyiai/KuroCat/releases/latest").unwrap();
         assert!(https);
         assert_eq!(host, "api.github.com");
         assert_eq!(port, 443);
-        assert_eq!(path, "/repos/qianyiai/kurocat/releases/latest");
+        assert_eq!(path, "/repos/qianyiai/KuroCat/releases/latest");
 
         let (https2, host2, port2, path2) =
             parse_http_url("http://127.0.0.1:8080/dl?v=1").unwrap();

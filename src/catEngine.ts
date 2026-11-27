@@ -264,6 +264,7 @@ export class KuroCatEngine {
   private tailPickerSelection: ReadonlySet<string> | null = null;
   private tailPickerHoverId: string | null = null;
   private renderScale = 1.0;
+  private chromaKeyBg: string | null = null;
   private embedded = false;
   private dafeiyu = new DaFeiYuRenderer();
   private catTail = {
@@ -313,6 +314,14 @@ export class KuroCatEngine {
 
   public setRenderScale(scale: number): void {
     this.renderScale = Math.max(0.2, Math.min(1.5, scale));
+    this.wakeAction();
+  }
+
+  public setChromaKeyBg(hex: string | null): void {
+    const next = typeof hex === 'string' && hex.trim() ? hex.trim() : null;
+    if (this.chromaKeyBg === next) return;
+    this.chromaKeyBg = next;
+    this.kbCacheKey = '';
     this.wakeAction();
   }
 
@@ -974,10 +983,10 @@ export class KuroCatEngine {
   private buildDaFeiYuLayout(): DaFeiYuLayout {
     const mx = this.mouseBaseX + this.mouseOffsetX;
     const my = this.mouseBaseY + this.mouseOffsetY;
-    const isCatFacing = this.keyboardOrientation === 'cat';
+    // Mouse always stays cat-facing (#92) even when keyboard faces the viewer
     const localBtnX = this.mouseLeftDown ? -6.5 : this.mouseRightDown ? 6.5 : 0;
     const localBtnY = -10.5;
-    const ang = this.kbTiltRad + (isCatFacing ? Math.PI : 0);
+    const ang = this.kbTiltRad + Math.PI;
     const c = Math.cos(ang);
     const s = Math.sin(ang);
     let cursorPt: { x: number; y: number } | null = null;
@@ -2192,17 +2201,8 @@ export class KuroCatEngine {
     const color = button === 'left' ? colors.left : button === 'right' ? colors.right : colors.middle;
     const mx = this.mouseBaseX + this.mouseOffsetX;
     const my = this.mouseBaseY + this.mouseOffsetY;
-    const isCatFacing = this.keyboardOrientation === 'cat';
-    const sideShift =
-      button === 'left'
-        ? isCatFacing
-          ? 10
-          : -10
-        : button === 'right'
-          ? isCatFacing
-            ? -10
-            : 10
-          : 0;
+    // Mouse stays cat-facing in both keyboard orientations (#92): LMB = inner/+X, RMB = outer/-X
+    const sideShift = button === 'left' ? 10 : button === 'right' ? -10 : 0;
 
     if (this.mouseBadges.length >= 2) {
       this.mouseBadges.shift();
@@ -3308,11 +3308,12 @@ export class KuroCatEngine {
     // Special posture overrides: scruffed dangle > edge-peek grip > groom face-wash > keyboard stretch > biscuit knead
     if (this.scruffAmount > 0.14 && !this.privacyMode) {
       paw.mode = 'scruff';
-      const chestSp = this.spinePoint(0.76, 0);
-      const dangleSway = this.scruffSwing * 24 + Math.sin(this.elapsed * 5.6 + sideSign) * 4.5;
+      const chestSp = this.spinePoint(0.72, 0);
+      const clampedSwing = Math.max(-1.6, Math.min(1.6, this.scruffSwing));
+      const dangleSway = clampedSwing * 7.5 + Math.sin(this.elapsed * 5.2 + sideSign * 0.7) * 2.5;
       paw.target = {
-        x: chestSp.x + sideSign * 26 + dangleSway,
-        y: chestSp.y + 16 + Math.abs(this.scruffSwing) * 4.5,
+        x: chestSp.x + sideSign * 22 + dangleSway,
+        y: chestSp.y + 8 + Math.abs(clampedSwing) * 2.0,
       };
     } else if (this.peekAmount > 0.22) {
       // Keep internal paw anchor parked cleanly at seated idle base so exiting side-peek never flashes a floating arm!
@@ -3388,22 +3389,13 @@ export class KuroCatEngine {
     }
 
     if (paw.mode === 'mouse') {
-      const isCatFacing = this.keyboardOrientation === 'cat';
       const lrBias = this.mouseLeftPress - this.mouseRightPress;
       const anyClickPress = Math.max(this.mouseLeftPress, this.mouseRightPress, this.mouseMiddlePress);
-      if (isCatFacing) {
-        // 180° cat-facing: palm heel at TOP, LMB = inner/+X, RMB = outer/-X
-        paw.target = {
-          x: liveMouseX + 1.2 + lrBias * 6.4,
-          y: liveMouseY - 11.5 + anyClickPress * 3.6,
-        };
-      } else {
-        // 0° viewer-facing: palm heel at BOTTOM, LMB = left/-X, RMB = right/+X
-        paw.target = {
-          x: liveMouseX + 0.5 - lrBias * 6.4,
-          y: liveMouseY + 10.0 - anyClickPress * 3.4,
-        };
-      }
+      // Mouse always stays cat-facing (#92): palm heel at TOP, LMB = inner/+X, RMB = outer/-X
+      paw.target = {
+        x: liveMouseX + 1.2 + lrBias * 6.4,
+        y: liveMouseY - 11.5 + anyClickPress * 3.6,
+      };
       const stillHolding =
         this.mouseLeftDown ||
         this.mouseRightDown ||
@@ -3494,7 +3486,12 @@ export class KuroCatEngine {
     const ctx = this.ctx;
     const cw = this.canvas.width;
     const ch = this.canvas.height;
-    ctx.clearRect(0, 0, cw, ch);
+    if (this.chromaKeyBg) {
+      ctx.fillStyle = this.chromaKeyBg;
+      ctx.fillRect(0, 0, cw, ch);
+    } else {
+      ctx.clearRect(0, 0, cw, ch);
+    }
 
     ctx.save();
     const { offsetX, offsetY, uniformScale } = this.getViewportTransform();
@@ -3968,9 +3965,11 @@ export class KuroCatEngine {
       const s = this.customSkin;
       const tailW = s.tailFluffy ? 20.0 : 16.0;
       if (s.outlineColor) {
-        ctx.shadowColor = 'rgba(30, 32, 40, 0.22)';
-        ctx.shadowBlur = 0; /* perf: no per-frame blur */
-        ctx.shadowOffsetY = 1.5;
+        if (!this.chromaKeyBg) {
+          ctx.shadowColor = 'rgba(30, 32, 40, 0.22)';
+          ctx.shadowBlur = 0; /* perf: no per-frame blur */
+          ctx.shadowOffsetY = 1.5;
+        }
         ctx.strokeStyle = s.outlineColor;
         ctx.lineWidth = tailW + 3.4;
         ctx.beginPath();
@@ -3979,7 +3978,7 @@ export class KuroCatEngine {
         ctx.stroke();
         ctx.shadowBlur =0; /* perf: no per-frame blur */
         ctx.shadowOffsetY = 0;
-      } else {
+      } else if (!this.chromaKeyBg) {
         ctx.shadowColor = 'rgba(18, 17, 18, 0.42)';
         ctx.shadowBlur = 0; /* perf: no per-frame blur */
       }
@@ -4064,9 +4063,11 @@ export class KuroCatEngine {
 
     if (this.catBreed === 'ragdoll') {
       // Plush bushy warm cocoa-taupe Ragdoll plume tail matching the real cat photo!
-      ctx.shadowColor = 'rgba(48, 38, 30, 0.22)';
-      ctx.shadowBlur = 0; /* perf: no per-frame blur */
-      ctx.shadowOffsetY = 1.5;
+      if (!this.chromaKeyBg) {
+        ctx.shadowColor = 'rgba(48, 38, 30, 0.22)';
+        ctx.shadowBlur = 0; /* perf: no per-frame blur */
+        ctx.shadowOffsetY = 1.5;
+      }
       ctx.strokeStyle = '#4e4239';
       ctx.lineWidth = 23.5;
       ctx.beginPath();
@@ -4188,7 +4189,7 @@ export class KuroCatEngine {
     const basePt = this.spinePoint(1.0, breath);
 
     ctx.save();
-    if (isRagdoll) {
+    if (isRagdoll && !this.chromaKeyBg) {
       ctx.shadowColor = 'rgba(26, 30, 40, 0.24)';
       ctx.shadowBlur = 0; /* perf: no per-frame blur */
       ctx.shadowOffsetY = 2;
@@ -5011,9 +5012,11 @@ export class KuroCatEngine {
 
     // Soft 3D base rim / drop shadow
     ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.28)';
-    ctx.shadowBlur = 0; /* perf: no per-frame blur */
-    ctx.shadowOffsetY = 3.5;
+    if (!this.chromaKeyBg) {
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.28)';
+      ctx.shadowBlur = 0; /* perf: no per-frame blur */
+      ctx.shadowOffsetY = 3.5;
+    }
     ctx.fillStyle = '#c8cac4';
     ctx.beginPath();
     ctx.ellipse(0, 1.8, rx, ry, 0, 0, Math.PI * 2);
@@ -5030,26 +5033,18 @@ export class KuroCatEngine {
     ctx.fill();
 
     // Clip inside mouse silhouette to render strictly separated Left / Right front button plates!
-    const isCatFacing = this.keyboardOrientation === 'cat';
+    // Mouse always stays cat-facing (#92): palm at TOP, buttons at BOTTOM, L = +X (inner), R = -X (outer)
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(0, 0, rx - 0.5, ry - 0.5, 0, 0, Math.PI * 2);
     ctx.clip();
-
-    // Orientation-aware button/wheel geometry:
-    // - 'cat' (180°): palm at TOP, buttons at BOTTOM, L = +X (inner), R = -X (outer)
-    // - 'viewer' (0°): buttons at TOP, palm at BOTTOM, L = -X (left), R = +X (right)
-    ctx.save();
-    if (!isCatFacing) {
-      ctx.scale(-1, -1);
-    }
 
     const traceSeam = () => {
       ctx.moveTo(-rx - 2, -0.8);
       ctx.quadraticCurveTo(0, 1.8, rx + 2, -0.8);
     };
 
-    // 1) Left Mouse Button plate (+X half in local coords -> inner-bottom in cat mode, top-left in viewer mode)
+    // 1) Left Mouse Button plate (+X half -> inner-bottom in cat-facing orientation)
     ctx.beginPath();
     ctx.moveTo(0, 0.5);
     ctx.quadraticCurveTo(rx * 0.52, 0.4, rx + 2, -0.8);
@@ -5064,7 +5059,7 @@ export class KuroCatEngine {
       ctx.fillRect(0, -1, 2.2, ry + 2);
     }
 
-    // 2) Right Mouse Button plate (-X half in local coords -> outer-bottom in cat mode, top-right in viewer mode)
+    // 2) Right Mouse Button plate (-X half -> outer-bottom in cat-facing orientation)
     ctx.beginPath();
     ctx.moveTo(-rx - 2, -0.8);
     ctx.quadraticCurveTo(-rx * 0.52, 0.4, 0, 0.5);
@@ -5109,20 +5104,14 @@ export class KuroCatEngine {
     ctx.lineTo(1.0, 8.8 + this.mouseMiddlePress * 0.8);
     ctx.stroke();
 
-    ctx.restore(); // end local orientation transform
-
     // Always draw upright crisp L / R button legends in unobstructed front tips!
     ctx.font = '800 7.6px "Segoe UI", system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const lx = isCatFacing ? 7.4 : -7.4;
-    const rxLbl = isCatFacing ? -7.4 : 7.4;
-    const lyBase = isCatFacing ? 14.0 : -14.0;
-    const pressDir = isCatFacing ? 0.9 : -0.9;
     ctx.fillStyle = lPress > 0.12 ? '#14161a' : 'rgba(72, 76, 86, 0.56)';
-    ctx.fillText('L', lx, lyBase + lPress * pressDir);
+    ctx.fillText('L', 7.4, 14.0 + lPress * 0.9);
     ctx.fillStyle = rPress > 0.12 ? '#ffffff' : 'rgba(72, 76, 86, 0.56)';
-    ctx.fillText('R', rxLbl, lyBase + rPress * pressDir);
+    ctx.fillText('R', -7.4, 14.0 + rPress * 0.9);
 
     ctx.restore(); // end mouse clip
 
@@ -5287,7 +5276,7 @@ export class KuroCatEngine {
       const padMargin = 20;
       const cacheLogW = Math.ceil(botHalfW * 2 + padMargin * 2);
       const cacheLogH = Math.ceil(this.kbHeight + padMargin * 2);
-      const nextKey = `${this.keyboardLayout}|${this.keyboardOrientation}|${this.kbWidth}|${this.kbHeight}|${cacheScale}`;
+      const nextKey = `${this.keyboardLayout}|${this.keyboardOrientation}|${this.kbWidth}|${this.kbHeight}|${cacheScale}|${this.chromaKeyBg ? 1 : 0}`;
 
       if (!this.kbCacheCanvas || this.kbCacheKey !== nextKey) {
         if (!this.kbCacheCanvas) this.kbCacheCanvas = document.createElement('canvas');
@@ -5301,9 +5290,11 @@ export class KuroCatEngine {
           cg.translate(cacheLogW * 0.5, cacheLogH * 0.5);
 
           cg.save();
-          cg.shadowColor = 'rgba(0, 0, 0, 0.34)';
-          cg.shadowBlur = 11;
-          cg.shadowOffsetY = 5;
+          if (!this.chromaKeyBg) {
+            cg.shadowColor = 'rgba(0, 0, 0, 0.34)';
+            cg.shadowBlur = 11;
+            cg.shadowOffsetY = 5;
+          }
           cg.fillStyle = '#191a1e';
           this.trapezoidPath(cg, topHalfW, botHalfW, -halfH + 3.5, halfH + 5.5, 6.5);
           cg.fill();
@@ -5341,9 +5332,11 @@ export class KuroCatEngine {
     } else {
       // Interactive tail-picker mode: draw live highlights & hover outlines
       ctx.save();
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.34)';
-      ctx.shadowBlur = 0; /* perf: no per-frame blur */
-      ctx.shadowOffsetY = 5;
+      if (!this.chromaKeyBg) {
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.34)';
+        ctx.shadowBlur = 0; /* perf: no per-frame blur */
+        ctx.shadowOffsetY = 5;
+      }
       ctx.fillStyle = '#191a1e';
       this.trapezoidPath(ctx, topHalfW, botHalfW, -halfH + 3.5, halfH + 5.5, 6.5);
       ctx.fill();
@@ -5497,7 +5490,7 @@ export class KuroCatEngine {
 
       // Soft subtle contact shadow ONLY under the plump round white mitten paw ball
       ctx.save();
-      if (!isSmear) {
+      if (!isSmear && !this.chromaKeyBg) {
         ctx.shadowColor = 'rgba(46, 38, 30, 0.22)';
         ctx.shadowBlur = 0; /* perf: no per-frame blur */
         ctx.shadowOffsetY = 1.5;
@@ -5914,9 +5907,11 @@ export class KuroCatEngine {
       const bx = -boxW / 2;
       const by = -boxH / 2;
 
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.22)';
-      ctx.shadowBlur = 0; /* perf: no per-frame blur */
-      ctx.shadowOffsetY = 2;
+      if (!this.chromaKeyBg) {
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.22)';
+        ctx.shadowBlur = 0; /* perf: no per-frame blur */
+        ctx.shadowOffsetY = 2;
+      }
 
       ctx.fillStyle = '#c8cac6';
       this.roundRect(ctx, bx, by + 2.2, boxW, boxH, 5.5);
@@ -5976,9 +5971,11 @@ export class KuroCatEngine {
       const bx = -boxW / 2;
       const by = -boxH / 2;
 
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.24)';
-      ctx.shadowBlur = 0; /* perf: no per-frame blur */
-      ctx.shadowOffsetY = 1.5;
+      if (!this.chromaKeyBg) {
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.24)';
+        ctx.shadowBlur = 0; /* perf: no per-frame blur */
+        ctx.shadowOffsetY = 1.5;
+      }
 
       ctx.fillStyle = '#22242a';
       this.roundRect(ctx, bx, by + 1.6, boxW, boxH, 5);
@@ -6068,9 +6065,11 @@ export class KuroCatEngine {
     const basePt = this.spinePoint(1.0, breath);
 
     ctx.save();
-    ctx.shadowColor = s.isDarkBase ? 'rgba(18, 17, 18, 0.42)' : 'rgba(30, 32, 42, 0.22)';
-    ctx.shadowBlur = 0; /* perf: no per-frame blur */
-    if (!s.isDarkBase) ctx.shadowOffsetY = 2;
+    if (!this.chromaKeyBg) {
+      ctx.shadowColor = s.isDarkBase ? 'rgba(18, 17, 18, 0.42)' : 'rgba(30, 32, 42, 0.22)';
+      ctx.shadowBlur = 0; /* perf: no per-frame blur */
+      if (!s.isDarkBase) ctx.shadowOffsetY = 2;
+    }
 
     // 1) Grounded hind paws always rendered in seated posture (dangle gently when scruffed!)
     ctx.fillStyle = s.pawColor;
@@ -6379,13 +6378,23 @@ export class KuroCatEngine {
 
     const earShape = contour.earShape;
     const earScale = contour.earScale;
-    const earMountX = 33 * (0.45 + 0.55 * hwScale) + jawSq * 5.0;
-    const earMountY = -28 - jawSq * 2.5 - (isOval ? 3.5 : 0);
+    const earMountX =
+      (33 * (0.45 + 0.55 * hwScale) +
+        jawSq * 5.0 +
+        (earShape === 'floppy' ? 6.5 : earShape === 'folded' ? 3.5 : 0)) *
+      contour.earSpacing;
+    const earMountY =
+      -28 -
+      jawSq * 2.5 -
+      (isOval ? 3.5 : 0) +
+      (earShape === 'floppy' ? 11.5 : earShape === 'folded' ? 5.5 : 0);
 
     const drawCustomEar = (sideSign: -1 | 1, twitch: number) => {
       ctx.save();
       ctx.translate(sideSign * (earMountX + airplaneSpread) + this.faceTurnX * 0.18, earMountY + airplaneDrop);
-      ctx.rotate(sideSign * ((earShape === 'wide' ? 0.28 : 0.08) - earPerk + twitch));
+      const baseEarRot =
+        earShape === 'wide' ? 0.28 : earShape === 'folded' ? 0.34 : earShape === 'floppy' ? 0.14 : 0.08;
+      ctx.rotate(sideSign * (baseEarRot + contour.earTilt - earPerk + twitch));
       ctx.scale(earScale, earScale);
 
       const earPath = (strokeOnly = false) => {
@@ -6413,6 +6422,20 @@ export class KuroCatEngine {
           ctx.bezierCurveTo(sideSign * 28, -8, sideSign * 20, -28, sideSign * 7, -27);
           ctx.bezierCurveTo(sideSign * -8, -23, sideSign * -18, -8, sideSign * -22, 10);
           if (!strokeOnly) ctx.closePath();
+        } else if (earShape === 'folded') {
+          // Scottish Fold cute downward-bent rounded ear cap
+          ctx.moveTo(sideSign * -15, 7);
+          ctx.bezierCurveTo(sideSign * -12, -8, sideSign * 2, -15, sideSign * 14, -6);
+          ctx.bezierCurveTo(sideSign * 23, 1, sideSign * 24, 15, sideSign * 13, 19);
+          ctx.bezierCurveTo(sideSign * 4, 21, sideSign * -7, 15, sideSign * -15, 7);
+          if (!strokeOnly) ctx.closePath();
+        } else if (earShape === 'floppy') {
+          // Puppy / lop-bunny soft plush drooping side ear
+          ctx.moveTo(sideSign * -10, -4);
+          ctx.bezierCurveTo(sideSign * 2, -12, sideSign * 16, -6, sideSign * 20, 10);
+          ctx.bezierCurveTo(sideSign * 25, 29, sideSign * 18, 46, sideSign * 7, 45);
+          ctx.bezierCurveTo(sideSign * -5, 44, sideSign * -12, 26, sideSign * -11, 8);
+          if (!strokeOnly) ctx.closePath();
         } else {
           ctx.moveTo(sideSign * 19, strokeOnly ? 17 : 20);
           ctx.bezierCurveTo(sideSign * 19, -8, sideSign * 12, -23, sideSign * 3, -21);
@@ -6425,7 +6448,12 @@ export class KuroCatEngine {
         s.pattern === 'calico' && sideSign === -1
           ? s.maskColor || s.earOuterColor
           : s.earOuterColor;
-      const earGrad = ctx.createLinearGradient(0, earShape === 'tall' ? -37 : -23, 0, 18);
+      const earGrad = ctx.createLinearGradient(
+        0,
+        earShape === 'tall' ? -37 : earShape === 'floppy' ? -10 : -23,
+        0,
+        earShape === 'floppy' ? 46 : 18,
+      );
       earGrad.addColorStop(0.0, s.earTipColor || baseEarCol);
       earGrad.addColorStop(1.0, baseEarCol);
       ctx.fillStyle = earGrad;
@@ -6443,7 +6471,16 @@ export class KuroCatEngine {
         ctx.stroke();
       }
 
-      if (s.earInnerColor) {
+      if (earShape === 'folded') {
+        // Subtle fold crease shadow so folded ear reads unmistakably as bent forward
+        ctx.strokeStyle = s.outlineColor || 'rgba(0, 0, 0, 0.24)';
+        ctx.lineWidth = 1.4 / Math.max(0.7, earScale);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(sideSign * -8, 1);
+        ctx.quadraticCurveTo(sideSign * 4, -3, sideSign * 14, 5);
+        ctx.stroke();
+      } else if (s.earInnerColor) {
         ctx.fillStyle = s.earInnerColor;
         ctx.beginPath();
         if (earShape === 'round') {
@@ -6456,6 +6493,8 @@ export class KuroCatEngine {
           ctx.moveTo(sideSign * 8, 6);
           ctx.bezierCurveTo(sideSign * 8, -2, sideSign * 5, -9, sideSign * 1, -8);
           ctx.bezierCurveTo(sideSign * -3, -7, sideSign * -7, -1, sideSign * -7, 5);
+        } else if (earShape === 'floppy') {
+          ctx.ellipse(sideSign * 4, 22, 6.2, 13.5, sideSign * -0.1, 0, Math.PI * 2);
         } else {
           ctx.moveTo(sideSign * 11, 10);
           ctx.bezierCurveTo(sideSign * 11, -3, sideSign * 7, -13, sideSign * 2, -11);
@@ -6465,7 +6504,7 @@ export class KuroCatEngine {
         ctx.fill();
       }
 
-      if (s.earTuftColor) {
+      if (s.earTuftColor && earShape !== 'folded' && earShape !== 'floppy') {
         ctx.strokeStyle = s.earTuftColor;
         ctx.lineWidth = 1.5;
         ctx.lineCap = 'round';
@@ -6487,76 +6526,145 @@ export class KuroCatEngine {
     ctx.shadowOffsetY = 0;
     const wShift = this.faceTurnX * 0.72;
 
-    // Blush on petting / chin scratch / kneading
-    const customBlushAmt = Math.max(this.squintAmount, this.chinAmount * 1.15, this.kneadAmount * 0.85);
+    // Blush on petting / chin scratch / kneading (or permanent soft blush when blushAlways is true)
+    const blushFloor = contour.blushAlways ? 0.62 : 0;
+    const customBlushAmt = Math.max(blushFloor, this.squintAmount, this.chinAmount * 1.15, this.kneadAmount * 0.85);
+    const blushX = 30 * (0.55 + 0.45 * contour.eyeSpacing);
+    const blushY = 13 + contour.eyeOffsetY * 6.0;
+    const bScale = contour.blushScale;
     if (s.blushColor && customBlushAmt > 0.12) {
       ctx.save();
       ctx.globalAlpha = 0.42 * Math.min(1.15, customBlushAmt);
       ctx.fillStyle = s.blushColor;
       ctx.beginPath();
-      ctx.ellipse(wShift - 30, 13, 8.5, 4.6, -0.08, 0, Math.PI * 2);
-      ctx.ellipse(wShift + 30, 13, 8.5, 4.6, 0.08, 0, Math.PI * 2);
+      ctx.ellipse(wShift - blushX, blushY, 8.5 * bScale, 4.6 * bScale, -0.08, 0, Math.PI * 2);
+      ctx.ellipse(wShift + blushX, blushY, 8.5 * bScale, 4.6 * bScale, 0.08, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-    } else if (this.chinAmount > 0.2) {
+    } else if (this.chinAmount > 0.2 || contour.blushAlways) {
       ctx.save();
-      ctx.globalAlpha = 0.24 * this.chinAmount;
+      ctx.globalAlpha = Math.max(contour.blushAlways ? 0.28 : 0, 0.24 * this.chinAmount);
       ctx.fillStyle = '#ffa8ba';
       ctx.beginPath();
-      ctx.ellipse(wShift - 30, 14, 7.5, 4.0, -0.08, 0, Math.PI * 2);
-      ctx.ellipse(wShift + 30, 14, 7.5, 4.0, 0.08, 0, Math.PI * 2);
+      ctx.ellipse(wShift - blushX, blushY + 1, 7.5 * bScale, 4.0 * bScale, -0.08, 0, Math.PI * 2);
+      ctx.ellipse(wShift + blushX, blushY + 1, 7.5 * bScale, 4.0 * bScale, 0.08, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
 
-    // Nose & mouth (scrunches up gently on Boop & Yawn so yawn mouth stays cleanly below nose!)
+    // Nose (supports cat / round / wide / small / none + noseScale + noseOffsetY)
     const customNoseWiggleY = -1.4 * this.boopCrossEye - 1.3 * this.yawnAmount;
-    if (s.noseColor) {
+    const noseBaseY = 11.4 + contour.noseOffsetY * 7.0 + customNoseWiggleY;
+    const nScale = contour.noseScale;
+    if (s.noseColor && contour.noseShape !== 'none') {
+      ctx.save();
+      ctx.translate(wShift, noseBaseY);
+      ctx.scale(nScale, nScale);
       ctx.fillStyle = s.noseColor;
       ctx.beginPath();
-      ctx.moveTo(wShift - 4.1, 9.6 + customNoseWiggleY);
-      ctx.quadraticCurveTo(wShift, 8.5 + customNoseWiggleY, wShift + 4.1, 9.6 + customNoseWiggleY);
-      ctx.quadraticCurveTo(wShift + 3.2, 13.8 + customNoseWiggleY, wShift, 14.3 + customNoseWiggleY);
-      ctx.quadraticCurveTo(wShift - 3.2, 13.8 + customNoseWiggleY, wShift - 4.1, 9.6 + customNoseWiggleY);
-      ctx.closePath();
-      ctx.fill();
+      if (contour.noseShape === 'round') {
+        ctx.ellipse(0, 0, 4.3, 3.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.32)';
+        ctx.beginPath();
+        ctx.ellipse(-1.2, -1.0, 1.3, 0.8, -0.2, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (contour.noseShape === 'wide') {
+        ctx.moveTo(-6.2, -1.8);
+        ctx.quadraticCurveTo(0, -3.2, 6.2, -1.8);
+        ctx.quadraticCurveTo(5.2, 2.8, 0, 3.4);
+        ctx.quadraticCurveTo(-5.2, 2.8, -6.2, -1.8);
+        ctx.closePath();
+        ctx.fill();
+      } else if (contour.noseShape === 'small') {
+        ctx.ellipse(0, 0, 2.6, 2.0, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.moveTo(-4.1, -1.8);
+        ctx.quadraticCurveTo(0, -2.9, 4.1, -1.8);
+        ctx.quadraticCurveTo(3.2, 2.4, 0, 2.9);
+        ctx.quadraticCurveTo(-3.2, 2.4, -4.1, -1.8);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
     }
-    if (s.mouthColor && this.yawnAmount < 0.25) {
+
+    // Mouth (supports w / smile / flat / open / blep / none + mouthScale + mouthOffsetY)
+    const mouthBaseY = 16.6 + contour.mouthOffsetY * 7.0;
+    const mScale = contour.mouthScale;
+    if (s.mouthColor && contour.mouthShape !== 'none' && this.yawnAmount < 0.25) {
       ctx.save();
       ctx.globalAlpha = 1 - this.yawnAmount / 0.25;
+      ctx.translate(wShift, mouthBaseY);
+      ctx.scale(mScale, mScale);
       ctx.strokeStyle = s.mouthColor;
-      ctx.lineWidth = 1.35;
+      ctx.lineWidth = 1.35 / Math.max(0.75, Math.sqrt(mScale));
       ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(wShift - 5.8, 16.6);
-      ctx.quadraticCurveTo(wShift - 2.9, 19.6, wShift, 16.4);
-      ctx.quadraticCurveTo(wShift + 2.9, 19.6, wShift + 5.8, 16.6);
-      ctx.stroke();
+      if (contour.mouthShape === 'smile') {
+        ctx.beginPath();
+        ctx.moveTo(-6.2, -0.5);
+        ctx.quadraticCurveTo(0, 4.6, 6.2, -0.5);
+        ctx.stroke();
+      } else if (contour.mouthShape === 'flat') {
+        ctx.beginPath();
+        ctx.moveTo(-5.8, 0.6);
+        ctx.quadraticCurveTo(0, 0.2, 5.8, 0.6);
+        ctx.stroke();
+      } else if (contour.mouthShape === 'open') {
+        ctx.fillStyle = '#c85b6f';
+        ctx.beginPath();
+        ctx.ellipse(0, 1.5, 3.2, 3.8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        // Classic 'w' or 'blep' (blep adds adorable tiny pink sticking-out tongue below center!)
+        if (contour.mouthShape === 'blep') {
+          ctx.fillStyle = '#f489a0';
+          ctx.beginPath();
+          ctx.moveTo(-2.7, 0.6);
+          ctx.bezierCurveTo(-3.0, 5.6, 3.0, 5.6, 2.7, 0.6);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = '#d4667e';
+          ctx.lineWidth = 0.9;
+          ctx.stroke();
+          ctx.strokeStyle = s.mouthColor;
+          ctx.lineWidth = 1.35 / Math.max(0.75, Math.sqrt(mScale));
+        }
+        ctx.beginPath();
+        ctx.moveTo(-5.8, 0.0);
+        ctx.quadraticCurveTo(-2.9, 3.0, 0, -0.2);
+        ctx.quadraticCurveTo(2.9, 3.0, 5.8, 0.0);
+        ctx.stroke();
+      }
       ctx.restore();
     }
     this.drawYawnOrLickMouth(ctx, wShift, s.mouthColor || s.outlineColor || '#3a232b');
 
-    // Whiskers (adapt horizontal anchor smoothly for wide/square faces)
-    const whiskerAnchorX = 34 * (0.55 + 0.45 * hwScale);
-    ctx.strokeStyle = s.whiskerColor;
-    ctx.lineWidth = 1.1;
-    ctx.lineCap = 'round';
-    const leftLen = Math.max(8, 12 - this.faceTurnX * 0.55);
-    const rightLen = Math.max(8, 12 + this.faceTurnX * 0.55);
-    for (let i = 0; i < 3; i++) {
-      const wy = 16 + i * 5.0;
-      const slant = 2.0 + i * 1.1;
-      ctx.beginPath();
-      ctx.moveTo(-whiskerAnchorX + wShift, wy);
-      ctx.lineTo(-whiskerAnchorX + wShift - leftLen, wy + slant);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(whiskerAnchorX + wShift, wy);
-      ctx.lineTo(whiskerAnchorX + wShift + rightLen, wy + slant);
-      ctx.stroke();
+    // Whiskers (whiskerLength = 0 cleanly hides whiskers for non-cat animals!)
+    if (contour.whiskerLength > 0.01) {
+      const whiskerAnchorX = 34 * (0.55 + 0.45 * hwScale);
+      ctx.strokeStyle = s.whiskerColor;
+      ctx.lineWidth = 1.1;
+      ctx.lineCap = 'round';
+      const leftLen = Math.max(8, 12 - this.faceTurnX * 0.55) * contour.whiskerLength;
+      const rightLen = Math.max(8, 12 + this.faceTurnX * 0.55) * contour.whiskerLength;
+      for (let i = 0; i < 3; i++) {
+        const wy = 16 + i * 5.0;
+        const slant = (2.0 + i * 1.1) * Math.min(1.25, contour.whiskerLength);
+        ctx.beginPath();
+        ctx.moveTo(-whiskerAnchorX + wShift, wy);
+        ctx.lineTo(-whiskerAnchorX + wShift - leftLen, wy + slant);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(whiskerAnchorX + wShift, wy);
+        ctx.lineTo(whiskerAnchorX + wShift + rightLen, wy + slant);
+        ctx.stroke();
+      }
     }
 
-    this.drawCustomEyes(ctx, s, wShift, -1);
+    this.drawCustomEyes(ctx, s, wShift, -1 + contour.eyeOffsetY * 11.0);
     this.drawHeadphonesFront(ctx);
 
     ctx.restore();
@@ -6586,11 +6694,15 @@ export class KuroCatEngine {
     const curious = Math.min(1, this.curiousAmount);
     const scruff = Math.min(1, this.scruffAmount);
     const cross = this.crossAmount;
-    const eyeXs = [cx - 23.0, cx + 23.0];
-    const rx = (14.8 + this.typingHunch * 1.0) * (1 + curious * 0.06 + scruff * 0.09);
-    const ry = (13.4 - this.typingHunch * 0.5) * (1 + curious * 0.09 + scruff * 0.13);
+    const contour = s.contour;
+    const eScale = contour.eyeScale;
+    const eAspect = contour.eyeAspect;
+    const eyeXs = [cx - 23.0 * contour.eyeSpacing, cx + 23.0 * contour.eyeSpacing];
+    const rx = (14.8 * eScale + this.typingHunch * 1.0) * (1 + curious * 0.06 + scruff * 0.09);
+    const ry = (13.4 * eScale * eAspect - this.typingHunch * 0.5) * (1 + curious * 0.09 + scruff * 0.13);
 
     for (let idx = 0; idx < 2; idx++) {
+      const side: -1 | 1 = idx === 0 ? -1 : 1;
       ctx.save();
       ctx.translate(eyeXs[idx], eyeY);
 
@@ -6599,8 +6711,8 @@ export class KuroCatEngine {
         ctx.lineWidth = 2.9;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(-13.5, -0.5);
-        ctx.quadraticCurveTo(0, 5.2, 13.5, -0.5);
+        ctx.moveTo(-13.5 * eScale, -0.5);
+        ctx.quadraticCurveTo(0, 5.2 * eScale, 13.5 * eScale, -0.5);
         ctx.stroke();
         ctx.restore();
         continue;
@@ -6611,8 +6723,8 @@ export class KuroCatEngine {
         ctx.lineWidth = 2.9;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(-12.5, 2.2);
-        ctx.quadraticCurveTo(0, -4.8, 12.5, 2.2);
+        ctx.moveTo(-12.5 * eScale, 2.2);
+        ctx.quadraticCurveTo(0, -4.8 * eScale, 12.5 * eScale, 2.2);
         ctx.stroke();
         ctx.restore();
         continue;
@@ -6624,16 +6736,16 @@ export class KuroCatEngine {
           ctx.lineWidth = 4.4;
           ctx.lineCap = 'round';
           ctx.beginPath();
-          ctx.moveTo(-12.5, 0.2);
-          ctx.quadraticCurveTo(0, 2.2, 12.5, 1.8);
+          ctx.moveTo(-12.5 * eScale, 0.2);
+          ctx.quadraticCurveTo(0, 2.2 * eScale, 12.5 * eScale, 1.8);
           ctx.stroke();
         }
         ctx.strokeStyle = s.squintColor;
         ctx.lineWidth = 2.8;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(-13.5, -0.5);
-        ctx.quadraticCurveTo(0, 1.4, 13.5, 1.2);
+        ctx.moveTo(-13.5 * eScale, -0.5);
+        ctx.quadraticCurveTo(0, 1.4 * eScale, 13.5 * eScale, 1.2);
         ctx.stroke();
         ctx.restore();
         continue;
@@ -6641,9 +6753,9 @@ export class KuroCatEngine {
 
       const openRy = Math.max(1.2, ry * (1 - closedness));
       const curiousTilt = (idx === 0 ? -0.1 : 0.1) * (0.25 + this.typingHunch * 0.75) * (1 - scruff * 0.8);
-      ctx.rotate(curiousTilt);
+      ctx.rotate(curiousTilt - side * contour.eyeTilt);
 
-      const restSquint = s.contour.eyeSquint;
+      const restSquint = contour.eyeSquint;
       const lidEff = Math.max(cross, this.tailGlanceAmount * 0.45);
       const hasLid = lidEff > 0.04 || restSquint > 0.02;
       const restDrop = -openRy + openRy * 1.12 * restSquint;
@@ -6664,9 +6776,11 @@ export class KuroCatEngine {
         ctx.clip();
       }
 
+      const eyeTopCol = idx === 1 ? s.rightEyeColorTop : s.eyeColorTop;
+      const eyeBotCol = idx === 1 ? s.rightEyeColorBottom : s.eyeColorBottom;
       const irisGrad = ctx.createLinearGradient(0, -openRy, 0, openRy);
-      irisGrad.addColorStop(0.0, s.eyeColorTop);
-      irisGrad.addColorStop(1.0, s.eyeColorBottom);
+      irisGrad.addColorStop(0.0, eyeTopCol);
+      irisGrad.addColorStop(1.0, eyeBotCol);
       ctx.fillStyle = irisGrad;
       ctx.beginPath();
       ctx.ellipse(0, 0, rx, openRy, 0, 0, Math.PI * 2);
@@ -6676,16 +6790,39 @@ export class KuroCatEngine {
       ctx.clip();
       if (openRy > 3.2) {
         const boopShrink = 1 - this.boopCrossEye * 0.22;
-        const pupilRx = Math.min(
-          rx - 2.4,
-          (6.2 + curious * 4.2 + scruff * 3.4 + this.typingEnergy * 0.8) * (1 - cross * 0.34) * boopShrink,
-        );
-        const pupilRy = Math.min(
-          openRy - 1.4,
-          (8.8 + curious * 1.9 + scruff * 2.2) * (1 - cross * 0.08) * boopShrink,
-        );
-        const maxTravelX = Math.max(2.6, rx - pupilRx - 1.0);
-        const maxTravelY = Math.max(2.2, openRy - pupilRy - 0.6);
+        const pMul = contour.pupilScale * eScale;
+        const pShape = contour.pupilShape;
+        let pupilRx: number;
+        let pupilRy: number;
+        if (pShape === 'round') {
+          const rP = (7.4 + curious * 3.4 + scruff * 2.8 + this.typingEnergy * 0.6) * pMul * (1 - cross * 0.24) * boopShrink;
+          pupilRx = Math.min(rx - 2.2, rP);
+          pupilRy = Math.min(openRy - 1.4, rP);
+        } else if (pShape === 'slit') {
+          pupilRx = Math.min(
+            rx - 2.4,
+            (2.8 + curious * 4.6 + scruff * 3.8 + this.typingEnergy * 0.4) * pMul * (1 - cross * 0.35) * boopShrink,
+          );
+          pupilRy = Math.min(
+            openRy - 1.0,
+            (9.8 + curious * 1.4 + scruff * 1.6) * pMul * eAspect * boopShrink,
+          );
+        } else if (pShape === 'dot') {
+          const rDot = (4.0 + curious * 1.8 + scruff * 1.6) * pMul * boopShrink;
+          pupilRx = Math.min(rx - 2.4, rDot);
+          pupilRy = Math.min(openRy - 1.4, rDot);
+        } else {
+          pupilRx = Math.min(
+            rx - 2.4,
+            (6.2 + curious * 4.2 + scruff * 3.4 + this.typingEnergy * 0.8) * pMul * (1 - cross * 0.34) * boopShrink,
+          );
+          pupilRy = Math.min(
+            openRy - 1.4,
+            (8.8 + curious * 1.9 + scruff * 2.2) * pMul * eAspect * (1 - cross * 0.08) * boopShrink,
+          );
+        }
+        const maxTravelX = Math.max(2.0, rx - pupilRx - 1.0);
+        const maxTravelY = Math.max(1.8, openRy - pupilRy - 0.6);
         const crossEyeDir = idx === 0 ? 1 : -1;
         const gazeXEff =
           this.eyeLookX * (1 - this.boopCrossEye) + crossEyeDir * 0.94 * this.boopCrossEye;
@@ -6695,19 +6832,48 @@ export class KuroCatEngine {
         const py = Math.max(-maxTravelY, Math.min(maxTravelY, gazeYEff * maxTravelY));
         ctx.fillStyle = s.pupilColor;
         ctx.beginPath();
-        ctx.ellipse(px, py, pupilRx, pupilRy, 0, 0, Math.PI * 2);
+        if (pShape === 'slit') {
+          ctx.moveTo(px, py - pupilRy);
+          ctx.quadraticCurveTo(px + pupilRx * 1.35, py, px, py + pupilRy);
+          ctx.quadraticCurveTo(px - pupilRx * 1.35, py, px, py - pupilRy);
+          ctx.closePath();
+        } else {
+          ctx.ellipse(px, py, pupilRx, pupilRy, 0, 0, Math.PI * 2);
+        }
         ctx.fill();
+
+        if (pShape === 'star') {
+          const sr = Math.max(2.6, Math.min(pupilRx, pupilRy) * 0.82);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+          ctx.beginPath();
+          for (let k = 0; k < 8; k++) {
+            const ang = (k / 8) * Math.PI * 2 - Math.PI / 2;
+            const rad = k % 2 === 0 ? sr : sr * 0.32;
+            const sx = px + Math.cos(ang) * rad;
+            const sy = py + Math.sin(ang) * rad;
+            if (k === 0) ctx.moveTo(sx, sy);
+            else ctx.lineTo(sx, sy);
+          }
+          ctx.closePath();
+          ctx.fill();
+        }
 
         const sparkleBoost = Math.max(curious, scruff * 0.75, this.boopCrossEye * 0.65);
         if (s.eyeCatchlight || sparkleBoost > 0.25) {
           const ca = s.eyeCatchlight ? 0.94 : Math.min(0.92, sparkleBoost * 0.95);
           ctx.fillStyle = `rgba(255, 255, 255, ${ca.toFixed(2)})`;
           ctx.beginPath();
-          ctx.arc(px - 3.6 - sparkleBoost * 0.8, py - 4.0 - sparkleBoost * 0.5, 2.5 + sparkleBoost * 0.7, 0, Math.PI * 2);
+          ctx.arc(
+            px - (3.6 + sparkleBoost * 0.8) * eScale,
+            py - (4.0 + sparkleBoost * 0.5) * eScale,
+            (2.5 + sparkleBoost * 0.7) * Math.max(0.7, eScale),
+            0,
+            Math.PI * 2,
+          );
           ctx.fill();
           ctx.fillStyle = `rgba(255, 255, 255, ${(ca * 0.76).toFixed(2)})`;
           ctx.beginPath();
-          ctx.arc(px + 3.2, py + 3.2, 1.2 + sparkleBoost * 0.4, 0, Math.PI * 2);
+          ctx.arc(px + 3.2 * eScale, py + 3.2 * eScale, (1.2 + sparkleBoost * 0.4) * Math.max(0.7, eScale), 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -6739,6 +6905,40 @@ export class KuroCatEngine {
       }
 
       ctx.restore();
+
+      // Optional sculpted eyebrows (soft / thick Shiba dots / angry / worried)
+      if (contour.eyebrowStyle !== 'none') {
+        ctx.save();
+        const browY = eyeY - ry - 5.5;
+        ctx.translate(eyeXs[idx], browY);
+        ctx.fillStyle = s.eyebrowColor;
+        ctx.strokeStyle = s.eyebrowColor;
+        ctx.lineCap = 'round';
+        if (contour.eyebrowStyle === 'thick') {
+          ctx.beginPath();
+          ctx.ellipse(side * -1.5, 0, 5.4 * eScale, 3.3 * eScale, side * -0.18, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (contour.eyebrowStyle === 'angry') {
+          ctx.lineWidth = 2.6;
+          ctx.beginPath();
+          ctx.moveTo(side * -9.5 * eScale, 2.8);
+          ctx.lineTo(side * 9.5 * eScale, -3.0);
+          ctx.stroke();
+        } else if (contour.eyebrowStyle === 'worried') {
+          ctx.lineWidth = 2.3;
+          ctx.beginPath();
+          ctx.moveTo(side * -9.0 * eScale, -2.6);
+          ctx.quadraticCurveTo(0, -1.0, side * 9.5 * eScale, 2.8);
+          ctx.stroke();
+        } else {
+          ctx.lineWidth = 2.0;
+          ctx.beginPath();
+          ctx.moveTo(side * -9.5 * eScale, 1.2);
+          ctx.quadraticCurveTo(0, -3.4, side * 9.5 * eScale, 1.4);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
     }
   }
 
@@ -6880,7 +7080,7 @@ export class KuroCatEngine {
 
     // Mitten paw ball
     ctx.save();
-    if (!isSmear && !s.isDarkBase) {
+    if (!isSmear && !s.isDarkBase && !this.chromaKeyBg) {
       ctx.shadowColor = 'rgba(36, 32, 30, 0.22)';
       ctx.shadowBlur = 0; /* perf: no per-frame blur */
       ctx.shadowOffsetY = 1.5;

@@ -172,6 +172,55 @@ pub fn configure_fullscreen(window: &WebviewWindow, always_on_top: bool) {
     });
 }
 
+/// Checks whether the frontmost macOS application is a Remote Desktop / screen-sharing client
+/// so KuroCat can temporarily yield beneath it without hiding (#40 cross-platform parity).
+pub fn frontmost_is_remote_desktop() -> bool {
+    use objc2::msg_send;
+    use objc2::runtime::{AnyClass, AnyObject};
+
+    unsafe {
+        let Some(cls) = AnyClass::get(c"NSWorkspace") else {
+            return false;
+        };
+        let ws: *mut AnyObject = msg_send![cls, sharedWorkspace];
+        if ws.is_null() {
+            return false;
+        }
+        let app: *mut AnyObject = msg_send![ws, frontmostApplication];
+        if app.is_null() {
+            return false;
+        }
+        let bid_obj: *const NSString = msg_send![app, bundleIdentifier];
+        let name_obj: *const NSString = msg_send![app, localizedName];
+        let bid = if !bid_obj.is_null() {
+            (*bid_obj).to_string()
+        } else {
+            String::new()
+        };
+        let name = if !name_obj.is_null() {
+            (*name_obj).to_string()
+        } else {
+            String::new()
+        };
+        crate::macos_is_remote_desktop_app(&bid, &name)
+    }
+}
+
+/// Smoothly yields KuroCat from `NSStatusWindowLevel` down to `NSNormalWindowLevel` while a
+/// Remote Desktop app is active, then restores `NSStatusWindowLevel` when switching away (#40).
+pub fn set_yielded_below_remote_desktop(window: &WebviewWindow, yielded: bool) {
+    let window = window.clone();
+    let _ = window.clone().run_on_main_thread(move || {
+        let _ = with_native_window(&window, |_, native| {
+            native.setLevel(if yielded {
+                NSNormalWindowLevel
+            } else {
+                NSStatusWindowLevel
+            });
+        });
+    });
+}
+
 pub fn create_display_menu(app: &AppHandle) -> tauri::Result<Submenu<tauri::Wry>> {
     let menu = Submenu::with_id(app, "mac_display_menu", "选择显示器", true)?;
     app.manage(DisplayMenu(menu.clone()));

@@ -1162,6 +1162,29 @@ html.win7-ulw-mode .floating-side-menu.scheme-a-menu {
   display: block;
 }
 
+.header-icon-btn.hidden {
+  display: none !important;
+}
+
+.header-icon-btn .icon-shield-ok {
+  display: none;
+}
+
+.header-icon-btn.is-elevated {
+  background: rgba(200, 245, 56, 0.16);
+  border-color: rgba(200, 245, 56, 0.48);
+  color: #d6fa5c;
+  cursor: default;
+}
+
+.header-icon-btn.is-elevated .icon-shield {
+  display: none;
+}
+
+.header-icon-btn.is-elevated .icon-shield-ok {
+  display: block;
+}
+
 /* 3-Tab Segmented Bar */
 .scheme-a-menu .menu-tabs.menu-tabs-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1211,18 +1234,40 @@ html.win7-ulw-mode .floating-side-menu.scheme-a-menu {
 }
 
 .scheme-a-menu .tab-panel {
-  gap: 7px;
+  gap: 6px;
 }
 
 /* Section Cards */
 .menu-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 5px;
+  padding: 7px 10px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.036);
   border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.menu-card-sliders {
+  gap: 4px;
+  padding: 6px 10px;
+}
+
+.menu-card-sliders .scale-slider-wrap {
+  gap: 4px;
+}
+
+.menu-card-sliders .scale-ticks {
+  font-size: 9px;
+  line-height: 1.05;
+}
+
+.menu-card-sliders .card-divider {
+  margin: 1.5px 0;
+}
+
+.menu-card-compact {
+  padding: 4.5px 10px;
 }
 
 .menu-card.hidden {
@@ -1312,7 +1357,7 @@ html.win7-ulw-mode .floating-side-menu.scheme-a-menu {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 28px;
+  min-height: 25px;
 }
 
 .setting-row.hidden {
@@ -1649,6 +1694,24 @@ html.win7-ulw-mode .floating-side-menu.scheme-a-menu {
   display: none !important;
 }
 
+.admin-restart-btn {
+  width: 100%;
+  margin-top: 2px;
+}
+
+.admin-restart-btn.is-elevated {
+  background: rgba(200, 245, 56, 0.12);
+  border-color: rgba(200, 245, 56, 0.36);
+  color: #d6fa5c;
+  cursor: default;
+}
+
+.admin-restart-btn.is-elevated:hover {
+  background: rgba(200, 245, 56, 0.12);
+  border-color: rgba(200, 245, 56, 0.36);
+  color: #d6fa5c;
+}
+
 .sub-action-btn .copied {
   color: #c8f538;
   font-weight: 600;
@@ -1718,6 +1781,67 @@ html.win7-ulw-mode .floating-side-menu.scheme-a-menu {
 
 .port-pill.hidden {
   display: none !important;
+}
+
+/* Live Companion Chroma Capture Window controls */
+#live-card .seg-control.seg-3 {
+  width: 172px;
+}
+
+.seg-btn[data-livechroma] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 4px 2px;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.seg-btn[data-livechroma] > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chroma-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  margin-right: 3px;
+  vertical-align: middle;
+}
+
+.chroma-dot-blue {
+  background: #2563ff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.chroma-dot-green {
+  background: #00c853;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.chroma-dot-magenta {
+  background: #f032e6;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.seg-btn[data-livechroma].active .chroma-dot {
+  box-shadow: 0 0 0 1px rgba(17, 18, 20, 0.38);
+}
+
+.live-guide-hint {
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #9ca3af;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 4px 7px;
 }
 
 /* Footer refinement for Scheme A */

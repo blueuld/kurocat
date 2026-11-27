@@ -12,6 +12,23 @@
         <div class="menu-header" id="menu-header">🐈‍⬛ KuroCat 小黑猫</div>
         <div class="menu-header-actions">
           <button
+            class="header-icon-btn hidden"
+            id="btn-header-admin"
+            data-action="restart-admin"
+            type="button"
+            data-i18n-title="menu.admin_restart"
+            title="以管理员身份重启（捕获游戏键鼠）"
+            aria-label="Restart as Administrator"
+          >
+            <svg class="icon-shield" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3z"></path>
+            </svg>
+            <svg class="icon-shield-ok" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3z"></path>
+              <path d="M9 12l2 2 4-4"></path>
+            </svg>
+          </button>
+          <button
             class="header-icon-btn"
             id="btn-header-lock"
             data-action="toggle-lock"
@@ -82,8 +99,8 @@
             <div class="breed-chips" id="breed-pills"></div>
           </section>
 
-          <!-- Card 2: Pet Scale (High-frequency, moved right into Looks!) -->
-          <section class="menu-card">
+          <!-- Card 2: Pet Scale & Opacity -->
+          <section class="menu-card menu-card-sliders">
             <div class="card-head">
               <span class="card-title" data-i18n="menu.scale_label">尺寸缩放</span>
               <button
@@ -108,6 +125,32 @@
                 <span>20%</span>
                 <span class="scale-tick-mid">100%</span>
                 <span>150%</span>
+              </div>
+            </div>
+            <div class="card-divider"></div>
+            <div class="card-head">
+              <span class="card-title" data-i18n="menu.opacity_label">不透明度</span>
+              <button
+                class="scale-value-btn"
+                id="opacity-value"
+                type="button"
+                data-i18n-title="menu.opacity_reset_title"
+                title="点击复位 100%"
+              >100%</button>
+            </div>
+            <div class="scale-slider-wrap">
+              <input
+                type="range"
+                id="opacity-slider"
+                class="scale-slider"
+                min="20"
+                max="100"
+                step="1"
+                value="100"
+              />
+              <div class="scale-ticks">
+                <span>20%</span>
+                <span>100%</span>
               </div>
             </div>
           </section>
@@ -172,9 +215,16 @@
           </section>
 
           <!-- Card 4: Typing & Mouse Sound (Default OFF, visible on Tab 1 for all pets) -->
-          <section class="menu-card" id="typing-sound-card">
+          <section class="menu-card menu-card-compact" id="typing-sound-card">
             <button class="toggle-row" data-action="toggle-typing-sound" type="button" role="switch" aria-checked="false" id="sw-typing-sound">
-              <span class="toggle-label" data-i18n="menu.toggle_typing_sound">打字键鼠音效</span>
+              <span class="toggle-label-wrap">
+                <svg class="section-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                </svg>
+                <span class="toggle-label" data-i18n="menu.toggle_typing_sound">打字键鼠音效</span>
+              </span>
               <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
             </button>
           </section>
@@ -350,6 +400,33 @@
                 <span id="shortcut-hint" data-i18n="menu.desktop_shortcut_short">桌面图标</span>
               </button>
             </div>
+
+            <button
+              class="sub-action-btn admin-restart-btn hidden"
+              data-action="restart-admin"
+              id="btn-restart-admin"
+              type="button"
+              data-i18n-title="menu.admin_restart"
+              title="以管理员身份重启（捕获游戏键鼠）"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3z"></path>
+              </svg>
+              <span id="admin-restart-label" data-i18n="menu.admin_restart">以管理员身份重启（捕获游戏键鼠）</span>
+            </button>
+            <button
+              class="sub-action-btn admin-restart-btn hidden"
+              data-action="mac-input-diag"
+              id="btn-mac-input-diag"
+              type="button"
+              data-i18n-title="menu.mac_input_diag"
+              title="输入监控诊断（修复按键无响应）"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3z"></path>
+              </svg>
+              <span id="mac-input-diag-label" data-i18n="menu.mac_input_diag">输入监控诊断（修复按键无响应）</span>
+            </button>
           </section>
 
           <!-- Card 2: AI & MCP Integration (Auto-expands when enabled) -->
@@ -397,6 +474,44 @@
                 <span class="toggle-label" data-i18n="menu.obs_hide_pet">仅 OBS 显示（隐藏桌面猫）</span>
                 <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
               </button>
+            </div>
+          </section>
+
+          <!-- Card 4: Live Companion Chroma Capture Window (Douyin / Huya / Bilibili / Kuaishou) -->
+          <section class="menu-card collapsible-card" id="live-card">
+            <button class="toggle-row card-toggle-head" data-action="toggle-live-capture" type="button" role="switch" aria-checked="false" id="sw-live">
+              <span class="toggle-label-wrap">
+                <svg class="section-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2" y="4" width="20" height="14" rx="2.5"></rect>
+                  <path d="M8 20h8M12 18v2"></path>
+                </svg>
+                <span class="toggle-label" data-i18n="menu.section_live">直播伴侣捕获窗</span>
+              </span>
+              <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+            </button>
+            <div class="collapsible-body hidden" id="live-card-body">
+              <div class="setting-row">
+                <span class="setting-label" data-i18n="menu.live_chroma_label">幕布颜色</span>
+                <div class="seg-control seg-3">
+                  <button class="seg-btn active" data-livechroma="blue" type="button">
+                    <span class="chroma-dot chroma-dot-blue" aria-hidden="true"></span>
+                    <span data-i18n="menu.live_chroma_blue">蓝幕</span>
+                  </button>
+                  <button class="seg-btn" data-livechroma="green" type="button">
+                    <span class="chroma-dot chroma-dot-green" aria-hidden="true"></span>
+                    <span data-i18n="menu.live_chroma_green">绿幕</span>
+                  </button>
+                  <button class="seg-btn" data-livechroma="magenta" type="button">
+                    <span class="chroma-dot chroma-dot-magenta" aria-hidden="true"></span>
+                    <span data-i18n="menu.live_chroma_magenta">品红</span>
+                  </button>
+                </div>
+              </div>
+              <button class="toggle-row sub-toggle-row" data-action="toggle-live-hide" type="button" role="switch" aria-checked="false" id="sw-live-hide">
+                <span class="toggle-label" data-i18n="menu.live_hide_pet">仅直播显示（隐藏桌面猫）</span>
+                <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+              </button>
+              <div class="live-guide-hint" data-i18n="menu.live_guide_hint">窗口捕获选 KuroCat Live → 开绿幕抠图</div>
             </div>
           </section>
         </div>

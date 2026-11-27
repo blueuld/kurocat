@@ -171,6 +171,27 @@
         </div>
       </div>
       <div class="menu-scale-row">
+        <div class="scale-header">
+          <span class="menu-scale-label" data-i18n="menu.opacity_label">不透明度</span>
+          <button class="scale-value-btn" id="opacity-value" type="button" data-i18n-title="menu.opacity_reset_title" title="点击复位 100%">100%</button>
+        </div>
+        <div class="scale-slider-wrap">
+          <input
+            type="range"
+            id="opacity-slider"
+            class="scale-slider"
+            min="20"
+            max="100"
+            step="1"
+            value="100"
+          />
+          <div class="scale-ticks">
+            <span>20%</span>
+            <span>100%</span>
+          </div>
+        </div>
+      </div>
+      <div class="menu-scale-row">
         <span class="menu-scale-label" data-i18n="menu.perf_lang_label">帧率上限与界面语言</span>
         <div class="kb-pills">
           <button class="kb-pill active" data-fpscap="0" data-i18n="menu.fps_auto" type="button">60 流畅</button>
@@ -186,6 +207,9 @@
         </div>
       </div>
       <div class="menu-sep"></div>
+      <button class="menu-item hidden" data-action="restart-admin" id="btn-restart-admin">
+        <span id="admin-restart-label" data-i18n="menu.admin_restart">以管理员身份重启（捕获游戏键鼠）</span>
+      </button>
       <button class="menu-item" data-action="desktop-shortcut" id="btn-desktop-shortcut">
         <span data-i18n="menu.desktop_shortcut">创建桌面图标</span>
         <span class="menu-hint" id="shortcut-hint">KuroCat</span>
