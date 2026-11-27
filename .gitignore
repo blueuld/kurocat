@@ -18,3 +18,12 @@ android/app/src/main/assets/web/
 *.keystore
 *.apk
 *.aab
+
+# 上游差分移植生成的临时清单（写到仓库外，勿提交）
+up.txt
+ours.txt
+up_new.txt
+both.txt
+noise.txt
+only_up.txt
+ours_all.txt
