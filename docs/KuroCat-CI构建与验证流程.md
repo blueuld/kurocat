@@ -1,6 +1,6 @@
 # KuroCat 云端构建与验证流程
 
-> 适用版本：v5.2.2 起（当前 v5.2.7）
+> 适用版本：v5.2.2 起（当前 v5.2.8）
 > 仓库：`blueuld/kurocat`（分支 `stats-patch`）
 > 流水线：`.github/workflows/build-stats.yml`
 > 更新于：2026-11-27
@@ -95,15 +95,15 @@ https://github.com/blueuld/kurocat/releases/latest/download/latest.json
 
 ```json
 {
-  "tag_name": "v5.2.7",
-  "name": "KuroCat v5.2.7 custom build",
-  "html_url": "https://github.com/blueuld/kurocat/releases/tag/v5.2.7",
+  "tag_name": "v5.2.8",
+  "name": "KuroCat v5.2.8 custom build",
+  "html_url": "https://github.com/blueuld/kurocat/releases/tag/v5.2.8",
   "body": "typing stats / hover fade patches",
   "assets": [{
-    "name": "KuroCat-5.2.7-windows-x64.exe",
-    "browser_download_url": "https://github.com/blueuld/kurocat/releases/download/v5.2.7/KuroCat-5.2.7-windows-x64.exe",
-    "size": 5185024,
-    "digest": "sha256:000ca2907859f2d05addbfb66c1622b50f1d0a782bd277f45c9136df2a55e175"
+    "name": "KuroCat-5.2.8-windows-x64.exe",
+    "browser_download_url": "https://github.com/blueuld/kurocat/releases/download/v5.2.8/KuroCat-5.2.8-windows-x64.exe",
+    "size": 5187072,
+    "digest": "sha256:35b7f7c421f6eefe7a9e9f436a673f742e8bbfbbb9c69ee849391fd4237c8aa3"
   }]
 }
 ```
@@ -277,6 +277,7 @@ push → CI 重复同一门禁 + 编译 Rust        # 唯一能验证 Rust 手�
 | #22 | v5.2.5：修复悬停淡出被上游不透明度功能覆盖 | ~3 分 20 秒 |
 | #23 | v5.2.6：修复菜单不透明度滑块被同名变量遮蔽而失效 | ~4 分 02 秒 |
 | #24 | v5.2.7：新增遮蔽/串绑硬门禁并在云端验证（步骤 7 success） | ~3 分 53 秒 |
+| #25 | v5.2.8：Alt 临时解除淡出 + 穿透/淡出互斥提示 | ~4 分 17 秒 |
 
 缓存命中时 Rust 增量编译是主要耗时；改动 `lib.rs` / `config.rs` 会触发较大重编译。
 
