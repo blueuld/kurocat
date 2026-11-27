@@ -1,6 +1,6 @@
 # KuroCat 云端构建与验证流程
 
-> 适用版本：v5.2.2 起（当前 v5.2.6）
+> 适用版本：v5.2.2 起（当前 v5.2.7）
 > 仓库：`blueuld/kurocat`（分支 `stats-patch`）
 > 流水线：`.github/workflows/build-stats.yml`
 > 更新于：2026-11-27
@@ -95,15 +95,15 @@ https://github.com/blueuld/kurocat/releases/latest/download/latest.json
 
 ```json
 {
-  "tag_name": "v5.2.6",
-  "name": "KuroCat v5.2.6 custom build",
-  "html_url": "https://github.com/blueuld/kurocat/releases/tag/v5.2.6",
+  "tag_name": "v5.2.7",
+  "name": "KuroCat v5.2.7 custom build",
+  "html_url": "https://github.com/blueuld/kurocat/releases/tag/v5.2.7",
   "body": "typing stats / hover fade patches",
   "assets": [{
-    "name": "KuroCat-5.2.6-windows-x64.exe",
-    "browser_download_url": "https://github.com/blueuld/kurocat/releases/download/v5.2.6/KuroCat-5.2.6-windows-x64.exe",
+    "name": "KuroCat-5.2.7-windows-x64.exe",
+    "browser_download_url": "https://github.com/blueuld/kurocat/releases/download/v5.2.7/KuroCat-5.2.7-windows-x64.exe",
     "size": 5185024,
-    "digest": "sha256:6e33b6e3aa5e173440f4f9caa31df2a6eee063f3f8768445462d65ed0cb6dcc9"
+    "digest": "sha256:000ca2907859f2d05addbfb66c1622b50f1d0a782bd277f45c9136df2a55e175"
   }]
 }
 ```
@@ -135,7 +135,7 @@ https://github.com/blueuld/kurocat/releases/latest/download/latest.json
 | 语义回归 | 本地 + CI `npm run check:shadow` | ~5 秒 | 顶层/局部同名变量遮蔽、滑块事件串绑（**TS 编译不会报错**） |
 | Rust | 只有 CI | 3–7 分钟 | 所有权、借用、签名不匹配、宏展开 |
 
-所以推送前必须先跑 `npm run build && npm run check:shadow`。`check:shadow` 用 TypeScript 编译器 API 按作用域找「模块顶层声明被函数内同名声明遮蔽」，并核对构建产物里 `preview_opacity` / `hoverFadeOpacity` 的事件绑定；v5.2.6 的不透明度滑块失效就是这类问题，纯靠编译和「标记还在」的自检都漏掉了。
+所以推送前必须先跑 `npm run build && npm run check:shadow`。`check:shadow` 用 TypeScript 编译器 API 按作用域找「模块顶层声明被函数内同名声明遮蔽」，并核对构建产物里 `preview_opacity` / `hoverFadeOpacity` 的事件绑定；v5.2.6 的不透明度滑块失效就是这类问题，纯靠编译和「标记还在」的自检都漏掉了。v5.2.7 的 run #24 里该门禁作为第 7 步实际执行并 success，两个反例（源码遮蔽 / 产物串绑）本地实测均退出码 1。
 
 ---
 
@@ -276,6 +276,7 @@ push → CI 重复同一门禁 + 编译 Rust        # 唯一能验证 Rust 手�
 | #21 | v5.2.4：验证 Release tag 指向构建提交 | ~3 分 39 秒 |
 | #22 | v5.2.5：修复悬停淡出被上游不透明度功能覆盖 | ~3 分 20 秒 |
 | #23 | v5.2.6：修复菜单不透明度滑块被同名变量遮蔽而失效 | ~4 分 02 秒 |
+| #24 | v5.2.7：新增遮蔽/串绑硬门禁并在云端验证（步骤 7 success） | ~3 分 53 秒 |
 
 缓存命中时 Rust 增量编译是主要耗时；改动 `lib.rs` / `config.rs` 会触发较大重编译。
 
