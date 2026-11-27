@@ -939,6 +939,28 @@ html.win7-ulw-mode .floating-side-menu {
   flex-shrink: 0;
 }
 
+/* ── 互斥提示：穿透锁定 / 悬停淡出只能二选一 ── */
+.mode-conflict-toast {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 56px;
+  z-index: 20;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(255, 190, 92, 0.96), rgba(255, 149, 84, 0.96));
+  color: #2a1a0b;
+  font-size: 11.5px;
+  line-height: 1.5;
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
+  animation: toastPop 0.18s ease-out;
+  pointer-events: none;
+}
+.mode-conflict-toast.hidden {
+  display: none;
+}
+
 .footer-btn {
   display: inline-flex;
   align-items: center;

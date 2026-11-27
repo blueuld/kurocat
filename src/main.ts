@@ -1968,6 +1968,13 @@ async function bootstrap(): Promise<void> {
         void applySettingsPatch({ showKeyBubbles: !settings.showKeyBubbles });
         break;
       case 'toggle-lock':
+        // 与设置菜单保持同一互斥规则：淡出已开时拒绝开启穿透锁定，
+        // 这里没有菜单内文字位，改用主窗猫旁边的气泡给出同一句猫咪提示。
+        if (!settings.clickThroughLocked && settings.hoverFade) {
+          closeContextMenu();
+          showUpdateToast(t('menu.mode_conflict_lock'), { autoHideMs: 3600, kind: 'transient' });
+          break;
+        }
         void applySettingsPatch({ clickThroughLocked: !settings.clickThroughLocked });
         closeContextMenu();
         break;

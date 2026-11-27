@@ -313,6 +313,7 @@
                 <button class="seg-btn" data-hoverfade="0" data-i18n="menu.hover_fade_off" type="button">关</button>
               </div>
             </div>
+            <div class="live-guide-hint" data-i18n="menu.hover_fade_alt_hint">按住 Alt 临时解除淡出</div>
 
             <div class="setting-row">
               <span class="setting-label" data-i18n="menu.hover_fade_delay_label">悬停多久后让位</span>
@@ -516,6 +517,9 @@
           </section>
         </div>
       </div>
+
+      <!-- 互斥提示：穿透锁定与悬停淡出不能同时开启 -->
+      <div id="mode-conflict-toast" class="mode-conflict-toast hidden" role="status" aria-live="polite"></div>
 
       <!-- Fixed Bottom Footer -->
       <div class="tab-footer">

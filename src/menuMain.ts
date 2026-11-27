@@ -468,6 +468,21 @@ function syncUI(): void {
   }
 }
 
+let modeConflictTimer: number | null = null;
+
+/** 穿透锁定与悬停淡出互斥时，在菜单窗口内给一条会自己消失的猫咪提示。 */
+function showModeConflictToast(kind: 'fade' | 'lock'): void {
+  const el = document.getElementById('mode-conflict-toast');
+  if (!el) return;
+  el.textContent = kind === 'fade' ? t('menu.mode_conflict_fade') : t('menu.mode_conflict_lock');
+  el.classList.remove('hidden');
+  if (modeConflictTimer !== null) window.clearTimeout(modeConflictTimer);
+  modeConflictTimer = window.setTimeout(() => {
+    el.classList.add('hidden');
+    modeConflictTimer = null;
+  }, 3600);
+}
+
 async function applySettingsPatch(patch: Partial<AppSettings>): Promise<void> {
   const seq = ++settingsPatchSeq;
   settings = { ...settings, ...patch };
@@ -674,6 +689,11 @@ async function bootstrap(): Promise<void> {
 
       const hoverFadeAttr = target.dataset.hoverfade;
       if (hoverFadeAttr === '1' || hoverFadeAttr === '0') {
+        // 互斥：穿透锁定已开时拒绝开启淡出，保持菜单打开让用户看到提示。
+        if (hoverFadeAttr === '1' && settings.clickThroughLocked) {
+          showModeConflictToast('fade');
+          return;
+        }
         void applySettingsPatch({ hoverFade: hoverFadeAttr === '1' });
         return;
       }
@@ -744,6 +764,11 @@ async function bootstrap(): Promise<void> {
           void applySettingsPatch({ showKeyBubbles: !settings.showKeyBubbles });
           break;
         case 'toggle-lock':
+          // 互斥：淡出已开时拒绝开启穿透锁定，保持菜单打开让用户看到提示。
+          if (!settings.clickThroughLocked && settings.hoverFade) {
+            showModeConflictToast('lock');
+            break;
+          }
           void applySettingsPatch({ clickThroughLocked: !settings.clickThroughLocked });
           closeMenu();
           break;

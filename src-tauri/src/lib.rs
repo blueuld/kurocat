@@ -4766,11 +4766,16 @@ fn start_hit_test_loop(
                     mask_bits: bits,
                 };
             }
-            // 悬停淡出：鼠标停在猫身上超过 350ms 就淡化并让出点击，移开立即恢复。
-            // 快速点击（不足 350ms）仍然可以撸猫。
+            // 悬停淡出：鼠标停在猫身上超过设定延迟就淡化并让出点击，移开立即恢复。
+            // 快速点击（不足延迟）仍然可以撸猫。
             // 触发范围用 over_interactive（猫身椭圆 + 键盘/鼠标区域），
             // 这样手、尾巴、键盘、鼠标的遮挡都会让位；锁定穿透时同样生效。
-            if hover_fade && over_interactive && !is_drag {
+            // 与上游「按住 Alt 临时解除穿透锁定」保持一致的语义：按住 Alt 时也不淡出，
+            // 松开后重新计时。alt_override 由 input_hook::is_alt_pressed() 实时给出，
+            // 这里不改动上游的 effective_locked 逻辑。
+            // effective_locked 为 true 时穿透已经接管鼠标，淡出不再叠加；
+            // 这是「两者不能同时打开」的运行时兜底（不改 settings.json）。
+            if hover_fade && !effective_locked && over_interactive && !is_drag && !alt_override {
                 match hover_since {
                     None => hover_since = Some(Instant::now()),
                     Some(started) if started.elapsed() >= Duration::from_millis(hover_delay as u64) => {
