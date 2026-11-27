@@ -1,6 +1,6 @@
 # KuroCat 云端构建与验证流程
 
-> 适用版本：v5.2.2 起（当前 v5.2.5）
+> 适用版本：v5.2.2 起（当前 v5.2.6）
 > 仓库：`blueuld/kurocat`（分支 `stats-patch`）
 > 流水线：`.github/workflows/build-stats.yml`
 > 更新于：2026-11-27
@@ -94,15 +94,15 @@ https://github.com/blueuld/kurocat/releases/latest/download/latest.json
 
 ```json
 {
-  "tag_name": "v5.2.5",
-  "name": "KuroCat v5.2.5 custom build",
-  "html_url": "https://github.com/blueuld/kurocat/releases/tag/v5.2.5",
+  "tag_name": "v5.2.6",
+  "name": "KuroCat v5.2.6 custom build",
+  "html_url": "https://github.com/blueuld/kurocat/releases/tag/v5.2.6",
   "body": "typing stats / hover fade patches",
   "assets": [{
-    "name": "KuroCat-5.2.5-windows-x64.exe",
-    "browser_download_url": "https://github.com/blueuld/kurocat/releases/download/v5.2.5/KuroCat-5.2.5-windows-x64.exe",
+    "name": "KuroCat-5.2.6-windows-x64.exe",
+    "browser_download_url": "https://github.com/blueuld/kurocat/releases/download/v5.2.6/KuroCat-5.2.6-windows-x64.exe",
     "size": 5185024,
-    "digest": "sha256:7166ce5d0437890c72c5ddf78c440aa05d3ff8cfad66151d1aa1ddbcbd402368"
+    "digest": "sha256:6e33b6e3aa5e173440f4f9caa31df2a6eee063f3f8768445462d65ed0cb6dcc9"
   }]
 }
 ```
@@ -257,6 +257,7 @@ push → CI 编译 Rust                     # 唯一能验证 Rust 手写合并�
 | 更新后功能消失 | `src-tauri/tauri.conf.json` 版本号没改，CI 覆盖了同版本资产 | 每次改动必须 +1 版本号 |
 | 发布成功但应用检测不到新版 | Release 被标成 prerelease，或资产名不含 `-windows-x64.exe` | 检查 `prerelease: false` 与命名 |
 | Release 的「源码快照」不是我们的代码 | tag 落在仓库默认分支 | 设 `target_commitish: ${{ github.sha }}`；已存在的 tag 要新建版本才会修正 |
+| 菜单滑块拖了没反应 | 顶层与函数内同名 `const` 变量遮蔽（TS 不报错） | 改名消除遮蔽；合并上游后必查同名变量，并核对构建产物事件绑定 |
 
 ---
 
@@ -271,6 +272,7 @@ push → CI 编译 Rust                     # 唯一能验证 Rust 手写合并�
 | #20 | 同步上游 621d7a1 → d4c38c6（面部雕塑 / Live 色键 / 呼噜声） | ~3 分 39 秒 |
 | #21 | v5.2.4：验证 Release tag 指向构建提交 | ~3 分 39 秒 |
 | #22 | v5.2.5：修复悬停淡出被上游不透明度功能覆盖 | ~3 分 20 秒 |
+| #23 | v5.2.6：修复菜单不透明度滑块被同名变量遮蔽而失效 | ~4 分 02 秒 |
 
 缓存命中时 Rust 增量编译是主要耗时；改动 `lib.rs` / `config.rs` 会触发较大重编译。
 
