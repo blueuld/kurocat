@@ -914,7 +914,9 @@ async function bootstrap(): Promise<void> {
   });
 
   const delaySliderEl = document.getElementById('hover-fade-delay') as HTMLInputElement | null;
-  const opacitySliderEl = document.getElementById('hover-fade-opacity') as HTMLInputElement | null;
+  // 注意：顶层已有 opacitySliderEl（= #opacity-slider，全局不透明度）。这里必须用一个
+  // 不同的名字，否则局部变量会遮蔽顶层那个，导致全局不透明度滑块的事件被误绑到本滑块。
+  const hoverFadeOpacitySliderEl = document.getElementById('hover-fade-opacity') as HTMLInputElement | null;
   if (delaySliderEl) {
     delaySliderEl.addEventListener('input', () => {
       const el = document.getElementById('hover-fade-delay-value');
@@ -924,13 +926,13 @@ async function bootstrap(): Promise<void> {
       void applySettingsPatch({ hoverFadeDelayMs: Number(delaySliderEl.value) });
     });
   }
-  if (opacitySliderEl) {
-    opacitySliderEl.addEventListener('input', () => {
+  if (hoverFadeOpacitySliderEl) {
+    hoverFadeOpacitySliderEl.addEventListener('input', () => {
       const el = document.getElementById('hover-fade-opacity-value');
-      if (el) el.textContent = `${Number(opacitySliderEl.value)}%`;
+      if (el) el.textContent = `${Number(hoverFadeOpacitySliderEl.value)}%`;
     });
-    opacitySliderEl.addEventListener('change', () => {
-      void applySettingsPatch({ hoverFadeOpacity: Number(opacitySliderEl.value) / 100 });
+    hoverFadeOpacitySliderEl.addEventListener('change', () => {
+      void applySettingsPatch({ hoverFadeOpacity: Number(hoverFadeOpacitySliderEl.value) / 100 });
     });
   }
 
