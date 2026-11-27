@@ -43,6 +43,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # 上游合并最容易引入「TS 合法但功能静默失效」的问题（同名变量遮蔽、
+      # 滑块事件串绑）。必须在打包发布前拦住，否则坏版本会直接进 Release。
+      - name: Check shadowed declarations & slider bindings
+        shell: pwsh
+        run: |
+          npm run build
+          npm run check:shadow
+
       - name: Read app version
         id: ver
         shell: pwsh

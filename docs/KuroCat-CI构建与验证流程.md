@@ -61,13 +61,14 @@ on:
 | 3 | `dtolnay/rust-toolchain@stable` | Rust 工具链 |
 | 4 | `swatinem/rust-cache@v2`（workspaces: src-tauri） | 缓存 `target/`，把 8 分钟压到 3–4 分钟 |
 | 5 | `npm ci` | 装依赖（不是 `npm install`，保证 lock 一致） |
-| 6 | Read app version | 从 `src-tauri/tauri.conf.json` 读版本号写进 `$GITHUB_OUTPUT` |
-| 7 | `npm run tauri -- build --no-bundle` | **只出 exe，不打安装包**（省 2–3 分钟） |
-| 8 | Publish build log on failure | 失败时把 `build.log` 发到 `build-log` Release |
-| 9 | Rename asset | 复制成 `KuroCat-<版本>-windows-x64.exe` |
-| 10 | Generate update manifest | 生成 `latest.json` |
-| 11 | Upload artifact | 附到本次 run（可在 Actions 页面直接下） |
-| 12 | Publish release | 以 `v<版本>` 发正式 Release，附 exe + latest.json |
+| 6 | `npm run build` + `npm run check:shadow` | **硬门禁**：检测同名变量遮蔽与滑块事件串绑，失败即终止，不发布坏版本 |
+| 7 | Read app version | 从 `src-tauri/tauri.conf.json` 读版本号写进 `$GITHUB_OUTPUT` |
+| 8 | `npm run tauri -- build --no-bundle` | **只出 exe，不打安装包**（省 2–3 分钟） |
+| 9 | Publish build log on failure | 失败时把 `build.log` 发到 `build-log` Release |
+| 10 | Rename asset | 复制成 `KuroCat-<版本>-windows-x64.exe` |
+| 11 | Generate update manifest | 生成 `latest.json` |
+| 12 | Upload artifact | 附到本次 run（可在 Actions 页面直接下） |
+| 13 | Publish release | 以 `v<版本>` 发正式 Release，附 exe + latest.json |
 
 ### 3.3 产物命名与版本号
 
@@ -131,9 +132,10 @@ https://github.com/blueuld/kurocat/releases/latest/download/latest.json
 | 层 | 哪里验 | 耗时 | 能发现什么 |
 |---|---|---|---|
 | TypeScript | 本地 `npm run build` | ~3 秒 | 类型错误、语法错误、导入缺失 |
+| 语义回归 | 本地 + CI `npm run check:shadow` | ~5 秒 | 顶层/局部同名变量遮蔽、滑块事件串绑（**TS 编译不会报错**） |
 | Rust | 只有 CI | 3–7 分钟 | 所有权、借用、签名不匹配、宏展开 |
 
-所以推送前必须先跑一次 `npm run build`——它能把绝大多数低级错误挡在提交之前，避免浪费一轮 CI。
+所以推送前必须先跑 `npm run build && npm run check:shadow`。`check:shadow` 用 TypeScript 编译器 API 按作用域找「模块顶层声明被函数内同名声明遮蔽」，并核对构建产物里 `preview_opacity` / `hoverFadeOpacity` 的事件绑定；v5.2.6 的不透明度滑块失效就是这类问题，纯靠编译和「标记还在」的自检都漏掉了。
 
 ---
 
@@ -238,8 +240,9 @@ git diff "$BASE" HEAD                   # 我们相对同步点改了什么（�
     ↓ 双方改动 → git merge-file 三方合并（base=$BASE），冲突则停下问人
     ↓ 成功后把 .upstream-sync 写成 upstream/main 的新 SHA
 npm run build                           # 前端先过，3 秒
+npm run check:shadow                    # 遮蔽 / 串绑硬门禁，失败立即停下问人
     ↓
-push → CI 编译 Rust                     # 唯一能验证 Rust 手写合并的方式
+push → CI 重复同一门禁 + 编译 Rust        # 唯一能验证 Rust 手写合并的方式
 ```
 
 **这条链路里 CI 是最后一道、也是唯一的 Rust 校验**。三方合并产生的手写代码（字段拼接、函数签名适配）本地完全无法验证，只能靠云端编译。合并上游 v5.1.3 时 `lib.rs` 有 6 处手写合并靠 CI 确认；2026-11-27 同步 `621d7a1 → d4c38c6`（9 个提交、61 个文件、`lib.rs` +2746 行）时，同样由 run #20 一次编译通过（3 分 39 秒）确认合并有效。run #21（v5.2.4）用于验证 Release 的 `target_commitish` 修复：新 tag 指向构建提交 `37a2393`。
@@ -257,7 +260,7 @@ push → CI 编译 Rust                     # 唯一能验证 Rust 手写合并�
 | 更新后功能消失 | `src-tauri/tauri.conf.json` 版本号没改，CI 覆盖了同版本资产 | 每次改动必须 +1 版本号 |
 | 发布成功但应用检测不到新版 | Release 被标成 prerelease，或资产名不含 `-windows-x64.exe` | 检查 `prerelease: false` 与命名 |
 | Release 的「源码快照」不是我们的代码 | tag 落在仓库默认分支 | 设 `target_commitish: ${{ github.sha }}`；已存在的 tag 要新建版本才会修正 |
-| 菜单滑块拖了没反应 | 顶层与函数内同名 `const` 变量遮蔽（TS 不报错） | 改名消除遮蔽；合并上游后必查同名变量，并核对构建产物事件绑定 |
+| 菜单滑块拖了没反应 | 顶层与函数内同名 `const` 变量遮蔽（TS 不报错） | 改名消除遮蔽；跑 `npm run check:shadow`，CI 也会在打包前拦住 |
 
 ---
 
@@ -282,7 +285,7 @@ push → CI 编译 Rust                     # 唯一能验证 Rust 手写合并�
 
 ```bash
 # 本地预览校验（推送前必做）
-cd kurocat_src && npm run build
+cd kurocat_src && npm run build && npm run check:shadow
 
 # 推送
 git -c http.proxy= push fork stats-patch
@@ -311,7 +314,7 @@ explorer.exe "%APPDATA%\Microsoft\Windows\Start Menu\Programs\KuroCat.lnk"
 
 已配置每日 09:00 的自动化（「KuroCat 上游同步」），执行的就是本文第 7 节的链路：
 
-- 无冲突 → 移植 → 自检（功能标记 + `npm run build`）→ 升版本 + 更新 `.upstream-sync` → 推送 → 等 CI → 下载校验 → 安装
+- 无冲突 → 移植 → 自检（功能标记 + `npm run build` + `npm run check:shadow`）→ 升版本 + 更新 `.upstream-sync` → 推送 → 等 CI → 下载校验 → 安装
 - 基线取自 `.upstream-sync`（上次同步到的上游 SHA），不再用 `fork/main`，避免把已合并提交重复计为新增
 - 有冲突 / 编译失败 / 变更规模异常 → 停下并询问
 
