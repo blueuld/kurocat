@@ -122,6 +122,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.version }}
+          # 显式指向本次构建提交；不指定时 tag 会落在仓库默认分支
+          # （fork/main 是上游原始快照，导致 Release 的源码快照不是我们构建的代码）
+          target_commitish: ${{ github.sha }}
           name: KuroCat v${{ steps.ver.outputs.version }}（自定义构建）
           body: |
             基于 KuroCat 源码 + 本地补丁构建，可直接在应用内「检查更新」升级。
