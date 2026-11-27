@@ -1,6 +1,6 @@
 # KuroCat 云端构建与验证流程
 
-> 适用版本：v5.2.2 起（当前 v5.2.3）
+> 适用版本：v5.2.2 起（当前 v5.2.4）
 > 仓库：`blueuld/kurocat`（分支 `stats-patch`）
 > 流水线：`.github/workflows/build-stats.yml`
 > 更新于：2026-11-27
@@ -74,6 +74,7 @@ on:
 - **版本号唯一来源**：`src-tauri/tauri.conf.json` 的 `version`。流水线从这里读，不猜 tag。
 - **产物名固定格式**：`KuroCat-<版本>-windows-x64.exe`。更新器按 `-windows-x64.exe` 后缀挑资产，改名会直接导致「没有可用安装包」。
 - **发布为正式版**（`prerelease: false`）：`/releases/latest` 只认非预发布版，标成 prerelease 会让更新检查拿不到。
+- **tag 必须指向构建提交**：`softprops/action-gh-release@v2` 的 `target_commitish` 省略时取仓库默认分支。fork 的 `main` 是上游原始快照（`ef4e40e`），会让 Release 的「源码快照」不是实际构建的代码。已在 `Publish release` 显式写 `target_commitish: ${{ github.sha }}`。注意它只在**新建 tag** 时生效，已存在的 tag 不会因此移动。
 
 ---
 
@@ -93,15 +94,15 @@ https://github.com/blueuld/kurocat/releases/latest/download/latest.json
 
 ```json
 {
-  "tag_name": "v5.2.3",
-  "name": "KuroCat v5.2.3 custom build",
-  "html_url": "https://github.com/blueuld/kurocat/releases/tag/v5.2.3",
+  "tag_name": "v5.2.4",
+  "name": "KuroCat v5.2.4 custom build",
+  "html_url": "https://github.com/blueuld/kurocat/releases/tag/v5.2.4",
   "body": "typing stats / hover fade patches",
   "assets": [{
-    "name": "KuroCat-5.2.3-windows-x64.exe",
-    "browser_download_url": "https://github.com/blueuld/kurocat/releases/download/v5.2.3/KuroCat-5.2.3-windows-x64.exe",
+    "name": "KuroCat-5.2.4-windows-x64.exe",
+    "browser_download_url": "https://github.com/blueuld/kurocat/releases/download/v5.2.4/KuroCat-5.2.4-windows-x64.exe",
     "size": 5185024,
-    "digest": "sha256:a004cfb4cd74c33167c96954c51e238069582d49fcf8181a461b52f34b55ef1a"
+    "digest": "sha256:f29ddd2a3338efd49c12cad52713feab266eb8f2e086af3b4695efec0e584e0c"
   }]
 }
 ```
@@ -241,7 +242,7 @@ npm run build                           # 前端先过，3 秒
 push → CI 编译 Rust                     # 唯一能验证 Rust 手写合并的方式
 ```
 
-**这条链路里 CI 是最后一道、也是唯一的 Rust 校验**。三方合并产生的手写代码（字段拼接、函数签名适配）本地完全无法验证，只能靠云端编译。合并上游 v5.1.3 时 `lib.rs` 有 6 处手写合并靠 CI 确认；2026-11-27 同步 `621d7a1 → d4c38c6`（9 个提交、61 个文件、`lib.rs` +2746 行）时，同样由 run #20 一次编译通过（3 分 39 秒）确认合并有效。
+**这条链路里 CI 是最后一道、也是唯一的 Rust 校验**。三方合并产生的手写代码（字段拼接、函数签名适配）本地完全无法验证，只能靠云端编译。合并上游 v5.1.3 时 `lib.rs` 有 6 处手写合并靠 CI 确认；2026-11-27 同步 `621d7a1 → d4c38c6`（9 个提交、61 个文件、`lib.rs` +2746 行）时，同样由 run #20 一次编译通过（3 分 39 秒）确认合并有效。run #21（v5.2.4）用于验证 Release 的 `target_commitish` 修复：新 tag 指向构建提交 `37a2393`。
 
 ---
 
@@ -255,6 +256,7 @@ push → CI 编译 Rust                     # 唯一能验证 Rust 手写合并�
 | 应用内更新报「文件不完整」 | 下载被截断（`< 500KB` 即判失败） | 重试；或手动下载替换 |
 | 更新后功能消失 | `src-tauri/tauri.conf.json` 版本号没改，CI 覆盖了同版本资产 | 每次改动必须 +1 版本号 |
 | 发布成功但应用检测不到新版 | Release 被标成 prerelease，或资产名不含 `-windows-x64.exe` | 检查 `prerelease: false` 与命名 |
+| Release 的「源码快照」不是我们的代码 | tag 落在仓库默认分支 | 设 `target_commitish: ${{ github.sha }}`；已存在的 tag 要新建版本才会修正 |
 
 ---
 
@@ -267,6 +269,7 @@ push → CI 编译 Rust                     # 唯一能验证 Rust 手写合并�
 | #18 | 实时轮廓掩码 | ~4 分钟 |
 | #19 | 合并上游 v5.1.3（Rust 大改） | ~7 分钟 |
 | #20 | 同步上游 621d7a1 → d4c38c6（面部雕塑 / Live 色键 / 呼噜声） | ~3 分 39 秒 |
+| #21 | v5.2.4：验证 Release tag 指向构建提交 | ~3 分 39 秒 |
 
 缓存命中时 Rust 增量编译是主要耗时；改动 `lib.rs` / `config.rs` 会触发较大重编译。
 
