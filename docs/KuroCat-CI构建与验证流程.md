@@ -1,6 +1,6 @@
 # KuroCat 云端构建与验证流程
 
-> 适用版本：v5.2.2 起（当前 v5.2.4）
+> 适用版本：v5.2.2 起（当前 v5.2.5）
 > 仓库：`blueuld/kurocat`（分支 `stats-patch`）
 > 流水线：`.github/workflows/build-stats.yml`
 > 更新于：2026-11-27
@@ -94,15 +94,15 @@ https://github.com/blueuld/kurocat/releases/latest/download/latest.json
 
 ```json
 {
-  "tag_name": "v5.2.4",
-  "name": "KuroCat v5.2.4 custom build",
-  "html_url": "https://github.com/blueuld/kurocat/releases/tag/v5.2.4",
+  "tag_name": "v5.2.5",
+  "name": "KuroCat v5.2.5 custom build",
+  "html_url": "https://github.com/blueuld/kurocat/releases/tag/v5.2.5",
   "body": "typing stats / hover fade patches",
   "assets": [{
-    "name": "KuroCat-5.2.4-windows-x64.exe",
-    "browser_download_url": "https://github.com/blueuld/kurocat/releases/download/v5.2.4/KuroCat-5.2.4-windows-x64.exe",
+    "name": "KuroCat-5.2.5-windows-x64.exe",
+    "browser_download_url": "https://github.com/blueuld/kurocat/releases/download/v5.2.5/KuroCat-5.2.5-windows-x64.exe",
     "size": 5185024,
-    "digest": "sha256:f29ddd2a3338efd49c12cad52713feab266eb8f2e086af3b4695efec0e584e0c"
+    "digest": "sha256:7166ce5d0437890c72c5ddf78c440aa05d3ff8cfad66151d1aa1ddbcbd402368"
   }]
 }
 ```
@@ -270,6 +270,7 @@ push → CI 编译 Rust                     # 唯一能验证 Rust 手写合并�
 | #19 | 合并上游 v5.1.3（Rust 大改） | ~7 分钟 |
 | #20 | 同步上游 621d7a1 → d4c38c6（面部雕塑 / Live 色键 / 呼噜声） | ~3 分 39 秒 |
 | #21 | v5.2.4：验证 Release tag 指向构建提交 | ~3 分 39 秒 |
+| #22 | v5.2.5：修复悬停淡出被上游不透明度功能覆盖 | ~3 分 20 秒 |
 
 缓存命中时 Rust 增量编译是主要耗时；改动 `lib.rs` / `config.rs` 会触发较大重编译。
 
