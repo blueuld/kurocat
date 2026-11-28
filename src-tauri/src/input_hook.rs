@@ -849,10 +849,16 @@ fn run_windows_hook_loop() {
     }
 }
 
-/// Parses `codesign -d -r- <app>` output and returns a canonical Ad-hoc `cdhash` fingerprint
-/// ONLY when the bundle is ad-hoc signed (never for Apple Developer ID / certificate-signed apps).
+/// Parses `codesign -d -r- <app>` output into a canonical macOS TCC signing identity fingerprint:
+/// - Ad-hoc builds: `cdhash:<sorted-hashes>` (changes on every build)
+/// - Stable self-signed leaf certificate builds (`scripts/macos-codesign.sh`): `cert:<sha1>`
+/// - Apple Developer ID / CA-signed builds: `dr:<normalized-designated-requirement>`
+///
+/// Tracking all three forms lets startup detect identity transitions (especially upgrading from
+/// legacy ad-hoc builds <= v5.1.2 to the fixed certificate builds >= v5.1.3) and auto-purge
+/// stale macOS TCC "ghost toggles" once without ever disturbing working or unchanged certs.
 #[cfg(any(target_os = "macos", test))]
-pub(crate) fn parse_macos_adhoc_cdhash(codesign_output: &str) -> Option<String> {
+pub(crate) fn parse_macos_signing_identity(codesign_output: &str) -> Option<String> {
     let req_line = codesign_output
         .lines()
         .find_map(|line| {
@@ -863,12 +869,41 @@ pub(crate) fn parse_macos_adhoc_cdhash(codesign_output: &str) -> Option<String> 
         })
         .unwrap_or(codesign_output.trim());
 
-    let lower = req_line.to_ascii_lowercase();
-    // Never treat Apple Developer ID / CA-signed apps as ad-hoc
-    if lower.contains("anchor apple") || lower.contains("certificate ") {
+    if req_line.is_empty() {
         return None;
     }
 
+    let lower = req_line.to_ascii_lowercase();
+
+    // 1. Fixed self-signed certificate leaf hash (e.g. `certificate leaf = H"fca9bb6e..."`)
+    if let Some(leaf_idx) = lower.find("certificate leaf") {
+        let after_leaf = lower[leaf_idx + "certificate leaf".len()..].trim_start();
+        if let Some(after_eq) = after_leaf.strip_prefix('=') {
+            let after_eq = after_eq.trim_start();
+            if let Some(after_h) = after_eq.strip_prefix("h\"") {
+                if let Some(end) = after_h.find('"') {
+                    let hex = after_h[..end].trim();
+                    if hex.len() >= 16 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
+                        return Some(format!("cert:{}", hex));
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Apple Developer ID / CA-signed designated requirement
+    if lower.contains("anchor apple") || lower.contains("certificate ") {
+        let normalized = req_line
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if !normalized.is_empty() {
+            return Some(format!("dr:{}", normalized));
+        }
+        return None;
+    }
+
+    // 3. Ad-hoc signature pinned to per-binary cdhash(es)
     let mut hashes: Vec<String> = Vec::new();
     let mut rest = req_line;
     while let Some(idx) = rest.find("cdhash H\"") {
@@ -892,17 +927,16 @@ pub(crate) fn parse_macos_adhoc_cdhash(codesign_output: &str) -> Option<String> 
 }
 
 /// Decides whether startup should run `tccutil reset` once to purge broken macOS "ghost toggles"
-/// left behind after an ad-hoc signed upgrade (either in-app auto-update or manual .dmg overwrite).
+/// left behind after a code-signing identity change (ad-hoc rebuild OR ad-hoc -> certificate migration).
 #[cfg(any(target_os = "macos", test))]
 pub(crate) fn should_auto_reset_stale_macos_tcc(
-    current_adhoc_sig: Option<&str>,
+    current_sig: Option<&str>,
     prev_recorded_sig: Option<&str>,
     has_existing_settings: bool,
     ax_trusted: bool,
     listen_trusted: bool,
 ) -> bool {
-    // Only applies to ad-hoc signed bundles (Developer ID preserves TCC across upgrades)
-    let Some(curr) = current_adhoc_sig else {
+    let Some(curr) = current_sig.map(str::trim).filter(|s| !s.is_empty()) else {
         return false;
     };
     // Never disturb already-working permissions
@@ -910,13 +944,42 @@ pub(crate) fn should_auto_reset_stale_macos_tcc(
         return false;
     }
     match prev_recorded_sig.map(str::trim).filter(|s| !s.is_empty()) {
-        // Already checked/reset once for this exact binary hash — never loop!
+        // Already checked/reset once for this exact signing identity — never loop!
         Some(prev) if prev == curr => false,
-        // Upgraded from a previously recorded ad-hoc binary hash -> stale ghost entry!
+        // Upgraded across different signing identities (e.g. ad-hoc -> fixed cert) -> stale ghost entry!
         Some(_) => true,
-        // Upgraded from an older version (<= v5.1.0) that already saved settings.json
+        // Upgraded from an older version (<= v5.1.0 / v5.1.3 cert without marker) that already saved settings.json
         None => has_existing_settings,
     }
+}
+
+/// Returns ONLY the macOS TCC services that are currently untrusted when an identity transition
+/// requires purging stale ghost toggles, ensuring an already-working grant is never wiped.
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn stale_macos_tcc_services_to_reset(
+    current_sig: Option<&str>,
+    prev_recorded_sig: Option<&str>,
+    has_existing_settings: bool,
+    ax_trusted: bool,
+    listen_trusted: bool,
+) -> Vec<&'static str> {
+    if !should_auto_reset_stale_macos_tcc(
+        current_sig,
+        prev_recorded_sig,
+        has_existing_settings,
+        ax_trusted,
+        listen_trusted,
+    ) {
+        return Vec::new();
+    }
+    let mut services = Vec::with_capacity(2);
+    if !ax_trusted {
+        services.push("Accessibility");
+    }
+    if !listen_trusted {
+        services.push("ListenEvent");
+    }
+    services
 }
 
 /// Extracts `kCGSSessionSecureInputPID = <pid>` from `ioreg -l -w 0` output when another macOS
@@ -944,8 +1007,8 @@ pub(crate) fn parse_macos_secure_input_pid(ioreg_output: &str) -> Option<u32> {
 #[cfg(target_os = "macos")]
 pub mod macos_hook {
     use super::{
-        hid_usage_to_vk, parse_macos_adhoc_cdhash, parse_macos_secure_input_pid,
-        should_auto_reset_stale_macos_tcc, KeySource, RawHookMsg, HOOK_TX, KEY_EVENTS_RECEIVED,
+        hid_usage_to_vk, parse_macos_secure_input_pid, parse_macos_signing_identity,
+        stale_macos_tcc_services_to_reset, KeySource, RawHookMsg, HOOK_TX, KEY_EVENTS_RECEIVED,
     };
     use block2::{Block, RcBlock};
     use objc2_app_kit::{
@@ -1554,7 +1617,7 @@ pub mod macos_hook {
         None
     }
 
-    fn read_current_adhoc_cdhash() -> Option<String> {
+    fn read_current_signing_identity() -> Option<String> {
         let bundle = current_macos_app_bundle()?;
         let out = std::process::Command::new("/usr/bin/codesign")
             .args(["-d", "-r-", bundle.to_str()?])
@@ -1565,11 +1628,14 @@ pub mod macos_hook {
             String::from_utf8_lossy(&out.stdout),
             String::from_utf8_lossy(&out.stderr)
         );
-        parse_macos_adhoc_cdhash(&combined)
+        parse_macos_signing_identity(&combined)
     }
 
-    fn run_tccutil_reset_all() {
-        for service in ["Accessibility", "ListenEvent"] {
+    fn run_tccutil_reset_services(services: &[&str]) {
+        if services.is_empty() {
+            return;
+        }
+        for service in services {
             let _ = std::process::Command::new("/usr/bin/tccutil")
                 .args(["reset", service, MACOS_BUNDLE_ID])
                 .status();
@@ -1577,28 +1643,35 @@ pub mod macos_hook {
         std::thread::sleep(Duration::from_millis(200));
     }
 
-    /// Automatically purges stale broken TCC "ghost toggles" once after an ad-hoc upgrade
-    /// (covers both in-app updates and manual .dmg drag-and-replace upgrades).
-    fn cleanup_stale_tcc_on_adhoc_upgrade() {
-        let curr_sig = read_current_adhoc_cdhash();
+    fn run_tccutil_reset_all() {
+        run_tccutil_reset_services(&["Accessibility", "ListenEvent"]);
+    }
+
+    /// Automatically purges stale broken TCC "ghost toggles" once after a signing identity change
+    /// (covers ad-hoc rebuilds AND migrating from legacy ad-hoc <= v5.1.2 to fixed certificate >= v5.1.3).
+    /// Only resets the specific service(s) that are currently untrusted so working grants are never wiped.
+    fn cleanup_stale_tcc_on_signature_change() {
+        let curr_sig = read_current_signing_identity();
         let Some(ref sig_str) = curr_sig else {
             return;
         };
 
+        // Keep legacy filename `macos-adhoc-sig.txt` for seamless upgrade detection from <= v5.1.2
         let marker_path = crate::config::app_data_dir().join("macos-adhoc-sig.txt");
         let prev_sig = std::fs::read_to_string(&marker_path).ok();
         let has_existing_settings = crate::config::config_path().is_file();
         let (ax_trusted, listen_trusted) =
             unsafe { (AXIsProcessTrusted(), CGPreflightListenEventAccess()) };
 
-        if should_auto_reset_stale_macos_tcc(
+        let to_reset = stale_macos_tcc_services_to_reset(
             Some(sig_str.as_str()),
             prev_sig.as_deref(),
             has_existing_settings,
             ax_trusted,
             listen_trusted,
-        ) {
-            run_tccutil_reset_all();
+        );
+        if !to_reset.is_empty() {
+            run_tccutil_reset_services(&to_reset);
         }
 
         if prev_sig.as_deref().map(str::trim) != Some(sig_str.as_str()) {
@@ -1622,7 +1695,7 @@ pub mod macos_hook {
     fn initialize_input_permissions() {
         static INITIALIZED: Once = Once::new();
         INITIALIZED.call_once(|| {
-            cleanup_stale_tcc_on_adhoc_upgrade();
+            cleanup_stale_tcc_on_signature_change();
             request_permissions_once();
         });
     }
@@ -3300,35 +3373,60 @@ mod tests {
     }
 
     #[test]
-    fn parses_macos_adhoc_cdhash_and_skips_developer_id() {
+    fn parses_macos_signing_identities_across_adhoc_self_signed_and_dev_id() {
         let universal_adhoc = "Executable=/Applications/KuroCat.app/Contents/MacOS/KuroCat\n\
             designated => cdhash H\"c5869ec4f5a71deee3cb204dc12605e18d490ce6\" or cdhash H\"263fe7dab4d157a259f8eded6c69135e7c1658ac\"";
         assert_eq!(
-            parse_macos_adhoc_cdhash(universal_adhoc).as_deref(),
+            parse_macos_signing_identity(universal_adhoc).as_deref(),
             Some("cdhash:263fe7dab4d157a259f8eded6c69135e7c1658ac|c5869ec4f5a71deee3cb204dc12605e18d490ce6")
+        );
+
+        let self_signed = "Executable=/Applications/KuroCat.app/Contents/MacOS/KuroCat\n\
+            designated => identifier \"com.kurocat.pet\" and certificate leaf = H\"fca9bb6eaaea21c57d42d91e14540d7f576682a3\"";
+        assert_eq!(
+            parse_macos_signing_identity(self_signed).as_deref(),
+            Some("cert:fca9bb6eaaea21c57d42d91e14540d7f576682a3")
         );
 
         let dev_id = "Executable=/Applications/KuroCat.app/Contents/MacOS/KuroCat\n\
             designated => identifier \"com.kurocat.pet\" and anchor apple generic and certificate leaf[subject.OU] = \"ABCDE12345\"";
-        assert_eq!(parse_macos_adhoc_cdhash(dev_id), None);
+        assert_eq!(
+            parse_macos_signing_identity(dev_id).as_deref(),
+            Some("dr:identifier \"com.kurocat.pet\" and anchor apple generic and certificate leaf[subject.OU] = \"ABCDE12345\"")
+        );
+
+        assert_eq!(parse_macos_signing_identity("code object is not signed at all"), None);
     }
 
     #[test]
-    fn stale_macos_tcc_auto_reset_triggers_only_once_per_adhoc_upgrade() {
-        let sig_old = "cdhash:1111111111111111";
-        let sig_new = "cdhash:2222222222222222";
+    fn stale_macos_tcc_auto_reset_handles_adhoc_to_cert_and_preserves_working_grants() {
+        let adhoc_old = "cdhash:1111111111111111";
+        let adhoc_new = "cdhash:2222222222222222";
+        let fixed_cert = "cert:fca9bb6eaaea21c57d42d91e14540d7f576682a3";
 
-        // Developer ID app -> NEVER reset
-        assert!(!should_auto_reset_stale_macos_tcc(None, Some(sig_old), true, false, false));
+        // Unknown / unsigned -> NEVER reset
+        assert!(stale_macos_tcc_services_to_reset(None, Some(adhoc_old), true, false, false).is_empty());
         // Both permissions already working -> NEVER reset
-        assert!(!should_auto_reset_stale_macos_tcc(Some(sig_new), Some(sig_old), true, true, true));
-        // Same binary relaunch -> NEVER loop-reset
-        assert!(!should_auto_reset_stale_macos_tcc(Some(sig_new), Some(sig_new), true, false, false));
-        // Upgraded from older ad-hoc binary & missing perms -> RESET once
-        assert!(should_auto_reset_stale_macos_tcc(Some(sig_new), Some(sig_old), true, false, true));
-        // Upgraded from legacy <= v5.1.0 (has settings.json, no marker yet) & missing perms -> RESET once
-        assert!(should_auto_reset_stale_macos_tcc(Some(sig_new), None, true, false, false));
+        assert!(stale_macos_tcc_services_to_reset(Some(fixed_cert), Some(adhoc_old), true, true, true).is_empty());
+        // Same cert upgrade (e.g. v5.1.4 -> v5.2.0) -> NEVER reset even if user declined
+        assert!(stale_macos_tcc_services_to_reset(Some(fixed_cert), Some(fixed_cert), true, false, false).is_empty());
+        // Ad-hoc -> fixed cert migration with both ghost-toggled -> resets BOTH once
+        assert_eq!(
+            stale_macos_tcc_services_to_reset(Some(fixed_cert), Some(adhoc_old), true, false, false),
+            vec!["Accessibility", "ListenEvent"]
+        );
+        // Partial working grant (e.g. v5.1.3 user already re-granted Accessibility, not ListenEvent)
+        // -> resets ONLY ListenEvent and NEVER wipes working Accessibility!
+        assert_eq!(
+            stale_macos_tcc_services_to_reset(Some(fixed_cert), None, true, true, false),
+            vec!["ListenEvent"]
+        );
+        // Ad-hoc rebuild with only ListenEvent working -> resets ONLY Accessibility
+        assert_eq!(
+            stale_macos_tcc_services_to_reset(Some(adhoc_new), Some(adhoc_old), true, false, true),
+            vec!["Accessibility"]
+        );
         // Brand-new fresh install (no settings.json, no marker) -> no stale entries to reset
-        assert!(!should_auto_reset_stale_macos_tcc(Some(sig_new), None, false, false, false));
+        assert!(stale_macos_tcc_services_to_reset(Some(fixed_cert), None, false, false, false).is_empty());
     }
 }

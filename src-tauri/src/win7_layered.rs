@@ -15,8 +15,8 @@ use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
-    GetWindowLongPtrW, GetWindowRect, IsWindowVisible, LoadCursorW, PostMessageW, PostQuitMessage,
-    RegisterClassExW, SendMessageW, SetCursor, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+    GetWindowRect, IsWindowVisible, LoadCursorW, PostMessageW, PostQuitMessage,
+    RegisterClassExW, SendMessageW, SetCursor, SetWindowPos, ShowWindow,
     TranslateMessage, UpdateLayeredWindow, GWL_EXSTYLE, HTCAPTION, HTCLIENT, HWND_NOTOPMOST,
     HWND_TOPMOST, IDC_ARROW, IDC_HAND, MA_NOACTIVATE, MSG, SWP_FRAMECHANGED, SWP_NOACTIVATE,
     SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA, WM_APP, WM_CLOSE,
@@ -411,14 +411,14 @@ unsafe extern "system" fn ulw_wnd_proc(
         WM_APP_SET_CLICK_THROUGH => {
             let ignore = wparam != 0;
             hub().click_through.store(ignore, Ordering::Relaxed);
-            let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            let ex = crate::win_get_window_long_ptr_w(hwnd, GWL_EXSTYLE);
             let new_ex = if ignore {
                 ex | (WS_EX_LAYERED as isize) | (WS_EX_TRANSPARENT as isize)
             } else {
                 (ex | (WS_EX_LAYERED as isize)) & !(WS_EX_TRANSPARENT as isize)
             };
             if new_ex != ex {
-                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex);
+                crate::win_set_window_long_ptr_w(hwnd, GWL_EXSTYLE, new_ex);
                 SetWindowPos(
                     hwnd,
                     std::ptr::null_mut(),
@@ -720,7 +720,7 @@ pub fn set_click_through(ignore: bool) {
 
 pub fn is_click_through() -> Option<bool> {
     let h = hwnd()?;
-    let ex = unsafe { GetWindowLongPtrW(h, GWL_EXSTYLE) };
+    let ex = unsafe { crate::win_get_window_long_ptr_w(h, GWL_EXSTYLE) };
     Some((ex & (WS_EX_TRANSPARENT as isize)) != 0)
 }
 

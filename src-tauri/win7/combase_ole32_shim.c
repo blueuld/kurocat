@@ -11,8 +11,19 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef _M_IX86
+extern long __cdecl _InterlockedCompareExchange(long volatile* Destination, long Exchange, long Comparand);
+#pragma intrinsic(_InterlockedCompareExchange)
+static void* shim_cas_ptr(void* volatile* dst, void* exch, void* comp) {
+    return (void*)_InterlockedCompareExchange((long volatile*)dst, (long)exch, (long)comp);
+}
+#else
 extern void* _InterlockedCompareExchangePointer(void* volatile* Destination, void* Exchange, void* Comparand);
 #pragma intrinsic(_InterlockedCompareExchangePointer)
+static void* shim_cas_ptr(void* volatile* dst, void* exch, void* comp) {
+    return _InterlockedCompareExchangePointer(dst, exch, comp);
+}
+#endif
 
 __declspec(dllimport) void* __stdcall GetModuleHandleW(const wchar_t* lpModuleName);
 __declspec(dllimport) void* __stdcall LoadLibraryW(const wchar_t* lpLibFileName);
@@ -31,7 +42,7 @@ static void* get_ole32_module(void) {
             h = LoadLibraryW(L"ole32.dll");
         }
         if (h) {
-            _InterlockedCompareExchangePointer(&cached, h, NULL);
+            shim_cas_ptr(&cached, h, NULL);
         }
     }
     return h;
@@ -45,7 +56,7 @@ static void* __stdcall shim_CoTaskMemAlloc(size_t cb) {
         if (h) {
             fn = (PFN_CoTaskMemAlloc)GetProcAddress(h, "CoTaskMemAlloc");
             if (fn) {
-                _InterlockedCompareExchangePointer(&cached, (void*)fn, NULL);
+                shim_cas_ptr(&cached, (void*)fn, NULL);
             }
         }
     }
@@ -60,7 +71,7 @@ static void __stdcall shim_CoTaskMemFree(void* pv) {
         if (h) {
             fn = (PFN_CoTaskMemFree)GetProcAddress(h, "CoTaskMemFree");
             if (fn) {
-                _InterlockedCompareExchangePointer(&cached, (void*)fn, NULL);
+                shim_cas_ptr(&cached, (void*)fn, NULL);
             }
         }
     }
@@ -77,7 +88,7 @@ static int32_t __stdcall shim_CoCreateFreeThreadedMarshaler(void* punkOuter, voi
         if (h) {
             fn = (PFN_CoCreateFreeThreadedMarshaler)GetProcAddress(h, "CoCreateFreeThreadedMarshaler");
             if (fn) {
-                _InterlockedCompareExchangePointer(&cached, (void*)fn, NULL);
+                shim_cas_ptr(&cached, (void*)fn, NULL);
             }
         }
     }
@@ -97,6 +108,8 @@ int32_t __stdcall CoCreateFreeThreadedMarshaler(void* punkOuter, void** ppunkMar
     return shim_CoCreateFreeThreadedMarshaler(punkOuter, ppunkMarshal);
 }
 
+#ifndef _M_IX86
 const void* const __imp_CoTaskMemAlloc = (const void*)shim_CoTaskMemAlloc;
 const void* const __imp_CoTaskMemFree = (const void*)shim_CoTaskMemFree;
 const void* const __imp_CoCreateFreeThreadedMarshaler = (const void*)shim_CoCreateFreeThreadedMarshaler;
+#endif

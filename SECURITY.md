@@ -5,8 +5,9 @@
 KuroCat is developed and maintained exclusively by **Qianyi (`@qianyiai`)**. Only the following distribution channels are official:
 
 1. **Official Website & Verified CDN**: `https://kurocat.org/` (Downloads & SHA-256: `https://kurocat.org/download/`)
-2. **Official GitHub Repository & Releases**: `https://github.com/qianyiai/KuroCat`
-3. **Official macOS Homebrew Tap**: `https://github.com/qianyiai/homebrew-tap` (`brew install --cask qianyiai/tap/kurocat`)
+2. **Official Quark Cloud Mirror (China — Win / macOS / Android)**: `https://pan.quark.cn/s/673684ea4103` (folder `KuroCat 谦一_官方`, share code `/~f3813cZv6O~:/`)
+3. **Official GitHub Repository & Releases**: `https://github.com/qianyiai/KuroCat`
+4. **Official macOS Homebrew Tap**: `https://github.com/qianyiai/homebrew-tap` (`brew install --cask qianyiai/tap/kurocat`)
 
 Every official release publishes 64-character **SHA-256 checksums** on both GitHub Releases and `https://kurocat.org/download/`.
 

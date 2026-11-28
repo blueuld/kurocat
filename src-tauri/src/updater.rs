@@ -96,7 +96,11 @@ fn extract_sha256(digest: &Option<String>) -> Option<String> {
 }
 
 fn detect_install_kind() -> &'static str {
-    #[cfg(all(windows, feature = "win7"))]
+    #[cfg(all(windows, feature = "win7", target_arch = "x86"))]
+    {
+        return "windows-win7-x86";
+    }
+    #[cfg(all(windows, feature = "win7", not(target_arch = "x86")))]
     {
         return "windows-win7";
     }
@@ -164,9 +168,21 @@ fn select_asset<'a>(assets: &'a [GhAsset], install_kind: &str) -> Option<&'a GhA
                     .iter()
                     .find(|a| a.name.to_ascii_lowercase().ends_with("-setup.exe"))
             }),
-        "windows-win7" => assets.iter().find(|a| {
+        "windows-win7" => assets
+            .iter()
+            .find(|a| {
+                let n = a.name.to_ascii_lowercase();
+                n.contains("win7") && n.contains("x64") && n.ends_with(".zip")
+            })
+            .or_else(|| {
+                assets.iter().find(|a| {
+                    let n = a.name.to_ascii_lowercase();
+                    n.contains("win7") && !n.contains("x86") && n.ends_with(".zip")
+                })
+            }),
+        "windows-win7-x86" => assets.iter().find(|a| {
             let n = a.name.to_ascii_lowercase();
-            n.contains("win7") && n.ends_with(".zip")
+            n.contains("win7") && n.contains("x86") && n.ends_with(".zip")
         }),
         "macos-app" => assets
             .iter()
@@ -994,6 +1010,7 @@ fn spawn_detached_windows<S: AsRef<std::ffi::OsStr>>(
 #[cfg(windows)]
 fn install_windows_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String> {
     if info.install_kind == "windows-win7"
+        || info.install_kind == "windows-win7-x86"
         || info
             .asset_name
             .as_deref()
@@ -1376,6 +1393,32 @@ mod tests {
         );
         let mac_asset = select_asset(&rel.assets, "macos-app").expect("select mac tar.gz");
         assert!(mac_asset.name.ends_with(".app.tar.gz"));
+    }
+
+    #[test]
+    fn select_asset_distinguishes_win7_x64_and_x86() {
+        let assets = vec![
+            GhAsset {
+                name: "KuroCat-v5.1.3-win7-x64-portable.zip".to_string(),
+                browser_download_url: "https://kurocat.org/releases/v5.1.3/KuroCat-v5.1.3-win7-x64-portable.zip".to_string(),
+                size: Some(187971195),
+                digest: None,
+            },
+            GhAsset {
+                name: "KuroCat-v5.1.3-win7-x86-portable.zip".to_string(),
+                browser_download_url: "https://kurocat.org/releases/v5.1.3/KuroCat-v5.1.3-win7-x86-portable.zip".to_string(),
+                size: Some(170000000),
+                digest: None,
+            },
+        ];
+        assert_eq!(
+            select_asset(&assets, "windows-win7").map(|a| a.name.as_str()),
+            Some("KuroCat-v5.1.3-win7-x64-portable.zip")
+        );
+        assert_eq!(
+            select_asset(&assets, "windows-win7-x86").map(|a| a.name.as_str()),
+            Some("KuroCat-v5.1.3-win7-x86-portable.zip")
+        );
     }
 
     #[test]

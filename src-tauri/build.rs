@@ -11,9 +11,11 @@ fn main() {
             }
         }
         if let Ok(shim) = std::env::var("KUROCAT_WIN7_OLE32_SHIM_OBJ") {
-            let trimmed = shim.trim();
-            if !trimmed.is_empty() {
-                println!("cargo:rustc-link-arg-bin=KuroCat={}", trimmed);
+            for part in shim.split(';') {
+                let trimmed = part.trim();
+                if !trimmed.is_empty() {
+                    println!("cargo:rustc-link-arg-bin=KuroCat={}", trimmed);
+                }
             }
         }
         if let Ok(obj) = std::env::var("KUROCAT_YY_THUNKS_OBJ") {

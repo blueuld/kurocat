@@ -182,9 +182,9 @@ mod win_impl {
         UIA_HasKeyboardFocusPropertyId, UIA_LegacyIAccessiblePatternId, UIA_TextControlTypeId,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetClassNameW, GetForegroundWindow, GetGUIThreadInfo, GetWindowLongPtrW,
-        GetWindowThreadProcessId, SendMessageTimeoutW, GUITHREADINFO, GWL_STYLE, OBJID_CLIENT,
-        SMTO_ABORTIFHUNG, SMTO_BLOCK, STATE_SYSTEM_PROTECTED, WM_GETOBJECT,
+        GetClassNameW, GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId,
+        SendMessageTimeoutW, GUITHREADINFO, GWL_STYLE, OBJID_CLIENT, SMTO_ABORTIFHUNG, SMTO_BLOCK,
+        STATE_SYSTEM_PROTECTED, WM_GETOBJECT,
     };
 
     const ES_MULTILINE: isize = 0x0004;
@@ -294,7 +294,7 @@ mod win_impl {
                 String::new()
             };
 
-            let style = GetWindowLongPtrW(hwnd_focus, GWL_STYLE);
+            let style = crate::win_get_window_long_ptr_w(hwnd_focus, GWL_STYLE);
             let is_multiline = (style & ES_MULTILINE) != 0;
 
             // ES_PASSWORD (0x0020) is ONLY valid on Edit / RichEdit window classes!

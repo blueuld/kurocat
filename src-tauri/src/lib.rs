@@ -2952,20 +2952,52 @@ fn get_cursor_pos(_scale_factor: f64) -> Option<(i32, i32)> {
 }
 
 #[cfg(windows)]
+#[inline]
+pub(crate) unsafe fn win_get_window_long_ptr_w(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    index: windows_sys::Win32::UI::WindowsAndMessaging::WINDOW_LONG_PTR_INDEX,
+) -> isize {
+    #[cfg(target_pointer_width = "64")]
+    {
+        windows_sys::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd, index)
+    }
+    #[cfg(target_pointer_width = "32")]
+    {
+        windows_sys::Win32::UI::WindowsAndMessaging::GetWindowLongW(hwnd, index) as isize
+    }
+}
+
+#[cfg(windows)]
+#[inline]
+pub(crate) unsafe fn win_set_window_long_ptr_w(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    index: windows_sys::Win32::UI::WindowsAndMessaging::WINDOW_LONG_PTR_INDEX,
+    new_long: isize,
+) -> isize {
+    #[cfg(target_pointer_width = "64")]
+    {
+        windows_sys::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW(hwnd, index, new_long)
+    }
+    #[cfg(target_pointer_width = "32")]
+    {
+        windows_sys::Win32::UI::WindowsAndMessaging::SetWindowLongW(hwnd, index, new_long as i32)
+            as isize
+    }
+}
+
+#[cfg(windows)]
 fn win_is_click_through(win: &tauri::WebviewWindow) -> Option<bool> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TRANSPARENT,
-    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GWL_EXSTYLE, WS_EX_TRANSPARENT};
     let hwnd = win.hwnd().ok()?.0 as windows_sys::Win32::Foundation::HWND;
-    let ex = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
+    let ex = unsafe { win_get_window_long_ptr_w(hwnd, GWL_EXSTYLE) };
     Some((ex & (WS_EX_TRANSPARENT as isize)) != 0)
 }
 
 #[cfg(windows)]
 fn win_force_click_through(win: &tauri::WebviewWindow, ignore: bool) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, SWP_FRAMECHANGED,
-        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_EX_LAYERED, WS_EX_TRANSPARENT,
+        SetWindowPos, GWL_EXSTYLE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        SWP_NOZORDER, WS_EX_LAYERED, WS_EX_TRANSPARENT,
     };
     let Ok(raw_hwnd) = win.hwnd() else {
         return;
@@ -2973,7 +3005,7 @@ fn win_force_click_through(win: &tauri::WebviewWindow, ignore: bool) {
     let hwnd = raw_hwnd.0 as windows_sys::Win32::Foundation::HWND;
     let is_win7 = win_needs_win7_ulw();
     unsafe {
-        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let ex = win_get_window_long_ptr_w(hwnd, GWL_EXSTYLE);
         let new_ex = if ignore {
             ex | (WS_EX_TRANSPARENT as isize) | (WS_EX_LAYERED as isize)
         } else if is_win7 {
@@ -2984,7 +3016,7 @@ fn win_force_click_through(win: &tauri::WebviewWindow, ignore: bool) {
             ex & !(WS_EX_TRANSPARENT as isize)
         };
         if new_ex != ex {
-            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex);
+            win_set_window_long_ptr_w(hwnd, GWL_EXSTYLE, new_ex);
             let _ = SetWindowPos(
                 hwnd,
                 std::ptr::null_mut(),
@@ -3006,13 +3038,11 @@ fn win_foreground_hwnd() -> windows_sys::Win32::Foundation::HWND {
 
 #[cfg(windows)]
 fn win_is_topmost(hwnd: windows_sys::Win32::Foundation::HWND) -> bool {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TOPMOST,
-    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GWL_EXSTYLE, WS_EX_TOPMOST};
     if hwnd.is_null() {
         return false;
     }
-    let ex = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
+    let ex = unsafe { win_get_window_long_ptr_w(hwnd, GWL_EXSTYLE) };
     (ex & (WS_EX_TOPMOST as isize)) != 0
 }
 
@@ -3258,9 +3288,8 @@ fn win_detect_yield_action(
 ) -> WinYieldAction {
     use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsIconic,
-        IsWindowVisible, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
-        WS_EX_TRANSPARENT,
+        EnumWindows, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+        GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
     };
 
     if our_hwnd.is_null() {
@@ -3339,7 +3368,7 @@ fn win_detect_yield_action(
             return 1;
         }
 
-        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let ex = win_get_window_long_ptr_w(hwnd, GWL_EXSTYLE);
         // Never yield to click-through transparent overlays (e.g. HUDs / crosshair / other pets).
         if (ex & (WS_EX_TRANSPARENT as isize)) != 0 {
             return 1;

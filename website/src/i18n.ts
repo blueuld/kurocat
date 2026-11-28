@@ -2,7 +2,7 @@ import type { TailKeyMode } from '../../src/catEngine';
 
 export type Locale = 'zh' | 'en' | 'ja' | 'ko' | 'es' | 'pt' | 'ru' | 'de';
 
-export type VisitorOS = 'android' | 'ios' | 'macos' | 'win7' | 'win' | 'linux-arm64' | 'linux-x64';
+export type VisitorOS = 'android' | 'ios' | 'macos' | 'win7' | 'win7-x86' | 'win' | 'linux-arm64' | 'linux-x64';
 
 export const LOCALE_SHORT_LABELS: Record<Locale, string> = {
   zh: '中文',
@@ -98,7 +98,7 @@ export interface KuroCatI18nBundle {
   fmt: {
     latestVersion: (tag: string) => string;
     heroDownloadWin: (size: string) => string;
-    heroDownloadWin7: (size: string) => string;
+    heroDownloadWin7: (size: string, arch?: 'x64' | 'x86') => string;
     heroDownloadMac: (size: string) => string;
     heroDownloadLinux: (size: string, arch: 'x64' | 'arm64') => string;
     heroDownloadAndroid: (size: string) => string;
@@ -135,6 +135,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'nav.playground': '在线试玩',
       'nav.whale': '鲸鱼娘视频',
       'nav.download': '立即下载',
+      'nav.quark': '☁️ 夸克网盘',
       'nav.features': '核心特性',
       'nav.mcp': 'AI 捏猫',
       'hero.eyebrow': 'Windows · macOS · Linux · Android · Open Source',
@@ -190,7 +191,16 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.winSub': 'Windows 10 / 11 (x64)',
       'dl.winTag': '推荐',
       'dl.primaryBtn': '高速直链下载',
+      'dl.quarkBtn': '☁️ 夸克网盘 ›',
       'dl.ghBtn': 'GitHub 官方源 ›',
+      'quark.badge': '☁️ 夸克网盘 · 官方合集',
+      'quark.platforms': 'Win / Mac / 安卓全包',
+      'quark.openBtn': '立即打开 ↗',
+      'quark.copyBtn': '复制口令',
+      'quark.dlBadge': '☁️ 官方夸克网盘高速分流',
+      'quark.dlPlatforms': '内含 Windows · macOS · Android 安装包',
+      'quark.dlTitle': '「KuroCat 谦一_官方」全平台合集文件夹',
+      'quark.dlOpenBtn': '☁️ 打开夸克网盘获取 ↗',
       'dl.macName': 'macOS 通用版（M 芯片 & Intel）',
       'dl.macSub': 'macOS 10.15+ (Catalina 及以上) Universal DMG',
       'dl.recommendedTag': '为你的设备推荐',
@@ -205,9 +215,11 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.copyCmd': '复制命令',
       'dl.tipWv2Title': '🪟 Windows 提示「Could not find the WebView2 Runtime」怎么办？',
       'dl.tipWv2Btn': '下载微软 WebView2 运行环境 ›',
-      'dl.win7Title': '🖥️ Windows 7 SP1（64 位）专属兼容绿包版（内置 WebView2 109）',
-      'dl.win7Btn': '下载 Win7 兼容绿包版（179.3 MB）',
-      'dl.win7Gh': 'GitHub 官方源（Win7 绿包）›',
+      'dl.win7Title': '🖥️ Windows 7 SP1（64 位 & 32 位）专属兼容绿包版（内置 WebView2 109）',
+      'dl.win7Btn': '64 位绿包（179.3 MB）',
+      'dl.win7X86Btn': '32 位绿包（159.4 MB）',
+      'dl.win7Gh': 'GitHub 64 位 ›',
+      'dl.win7X86Gh': 'GitHub 32 位 ›',
       'dl.linuxTitle': '🐧 Linux / Ubuntu 22.04+ / 银河麒麟 V11+ / 优麒麟（x86_64 & ARM64）',
       'dl.linuxX64Deb': 'x86_64 .deb（2.66 MB）',
       'dl.linuxArmDeb': 'ARM64 飞腾/麒麟 .deb（2.62 MB）',
@@ -280,6 +292,10 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
         '免费开源的透明置顶桌面键鼠伴侣，支持 <strong>3D 手办 / 2D 经典</strong> 一键切换，超低占用不卡游戏。内置 <strong>6 款猫咪 + 大肥鱼</strong>，支持摸头呼噜、输密码自动闭眼、OBS 直播与 <strong>AI 捏猫</strong>。',
       'dl.sub':
         '所有安装包均内置 <strong>20%–150% 无级缩放</strong>、<strong>65% / 108 键随时切换</strong>、<strong>自定义尾巴拍键</strong> 与 <strong>App 内自动更新</strong>。<br />默认提供 <code>kurocat.org</code> 官方高速直链，同时保留 GitHub Releases 官方原链与 SHA-256 校验。',
+      'quark.heroDesc':
+        '<strong>「KuroCat 谦一_官方」</strong>高速直取 · 点开获取即免费支持开源维护',
+      'quark.dlBody':
+        '官方同步更新 Win / Mac / 安卓安装包，国内直连不限速且支持一键转存防丢；点击打开获取也是对 KuroCat 开源维护的免费支持。打开「夸克网盘 APP」也可复制口令 <code>/~f3813cZv6O~:/</code> 直达。',
       'dl.winDesc':
         '开箱即 65% 紧凑机械键盘，自动创建桌面 <code>KuroCat</code> 图标、开始菜单与系统卸载入口；右键随时可一键切换 <strong>108 键全尺寸小键盘</strong>、<strong>自定义尾巴按键</strong> 与内置自更新。',
       'dl.macDesc':
@@ -295,7 +311,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.tipWv2Body':
         '常见于较老 Win10 / LTSC 精简版、卸过 Edge 浏览器或直接运行绿色单文件版的电脑（<strong>Win7 用户请直接下载下方专属兼容绿包版</strong>）。优先推荐安装上方<strong>正式安装版（setup.exe）</strong>，或点击右侧下载微软官方 WebView2 引导程序（1.8 MB），<strong>右键 → 以管理员身份运行</strong>装完即可全机生效。',
       'dl.win7Body':
-        '专为 Windows 7 SP1 64 位单独编译适配（原生 PE 6.01，零 Win8/Win10 DLL 依赖，内置微软官方最后一版支持 Win7 的 <strong>WebView2 109.0.1518.78</strong> 离线内核，并启用 Win7 原生 256 级逐像素透明抗锯齿渲染，无论是否开启 Aero 均无白底框与锯齿）。下载后请先<strong>全部解压</strong>，保持 <code>KuroCat.exe</code> 与 <code>WebView2Runtime</code> 同目录，直接双击运行即可。',
+        '专为 Windows 7 SP1 64 位（x64）与 32 位（x86）单独编译适配（原生 PE 6.01，零 Win8/Win10 DLL 依赖，内置微软官方最后一版支持 Win7 的 <strong>WebView2 109.0.1518.78</strong> 离线内核，并启用 Win7 原生 256 级逐像素透明抗锯齿渲染，无论是否开启 Aero 均无白底框与锯齿）。下载后请先<strong>全部解压</strong>，保持 <code>KuroCat.exe</code> 与 <code>WebView2Runtime</code> 同目录，直接双击运行即可。',
       'dl.linuxBody':
         '原生支持 X11 全局键鼠监听（免 root）与 Wayland <code>evdev</code> 降级、透明无边框置顶、鼠标穿透（按住 <code>Alt</code> 临时拖动）及开机自启。需要 <strong><code>glibc &gt;= 2.34</code></strong>（基于 Ubuntu 22.04+ / Debian 12+ / 银河麒麟 V11+，暂不支持基于 Ubuntu 20.04 / <code>glibc 2.31</code> 的银河麒麟 V10 SP1）。优先推荐下载轻量 <strong>.deb 安装包（2.7 MB）</strong>（需 <code>libwebkit2gtk-4.1-0</code>，双击或 <code>sudo apt install ./KuroCat-*.deb</code>）；无管理员权限可直接运行 <strong>.AppImage 绿色版</strong>（<code>chmod +x</code> 后双击）。',
       'dl.tipGameBody':
@@ -399,7 +415,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       latestVersion: (tag) => `最新版本 ${tag}`,
       heroDownloadWin: (size) => `免费下载 Windows 版（${size}）`,
       heroDownloadMac: (size) => `免费下载 macOS 通用版（${size}）`,
-      heroDownloadWin7: (size) => `免费下载 Win7 绿包版（${size}）`,
+      heroDownloadWin7: (size, arch) =>
+        arch === 'x86' ? `免费下载 Win7 32 位绿包版（${size}）` : `免费下载 Win7 64 位绿包版（${size}）`,
       heroDownloadLinux: (size, arch) =>
         arch === 'arm64' ? `免费下载 Linux ARM64 版（${size}）` : `免费下载 Linux 版（${size}）`,
       heroDownloadAndroid: (size) => `免费下载 Android 版（${size}）`,
@@ -407,7 +424,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       heroOsHint: (os, size) => {
         if (os === 'android') return `已识别当前设备：<strong>Android 手机 / 平板</strong> · 一键直下官方签名 APK（${size}）`;
         if (os === 'macos') return `已识别当前系统：<strong>macOS (Apple Silicon &amp; Intel)</strong> · 同样提供 Win / Linux / Android 版`;
-        if (os === 'win7') return `已识别当前系统：<strong>Windows 7</strong> · 已自动推荐内置 WebView2 109 离线兼容绿包`;
+        if (os === 'win7-x86') return `已识别当前系统：<strong>Windows 7（32 位）</strong> · 已自动推荐 32 位内置 WebView2 109 离线绿包`;
+        if (os === 'win7') return `已识别当前系统：<strong>Windows 7（64 位）</strong> · 已自动推荐内置 WebView2 109 离线兼容绿包`;
         if (os === 'linux-arm64') return `已识别当前系统：<strong>Linux ARM64</strong> · 默认推荐轻量 .deb，下方另附 AppImage`;
         if (os === 'linux-x64') return `已识别当前系统：<strong>Linux x86_64</strong> · 默认推荐轻量 .deb，下方另附 AppImage`;
         if (os === 'ios') return '已识别当前设备：<strong>iOS / iPadOS</strong> · 暂仅支持电脑端与 Android，请在电脑或安卓手机下载';
@@ -447,6 +465,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'nav.playground': 'Playground',
       'nav.whale': 'BigFish Video',
       'nav.download': 'Download',
+      'nav.quark': '☁️ Quark Drive',
       'nav.features': 'Features',
       'nav.mcp': 'AI MCP',
       'hero.eyebrow': 'Windows · macOS · Linux · Android · Open Source',
@@ -502,7 +521,16 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.winSub': 'Windows 10 / 11 (x64)',
       'dl.winTag': 'Recommended',
       'dl.primaryBtn': 'Fast Direct Download',
+      'dl.quarkBtn': '☁️ Quark Drive ›',
       'dl.ghBtn': 'GitHub Official Mirror ›',
+      'quark.badge': '☁️ Official Quark Drive',
+      'quark.platforms': 'Win / Mac / Android Pack',
+      'quark.openBtn': 'Open Drive ↗',
+      'quark.copyBtn': 'Copy Code',
+      'quark.dlBadge': '☁️ Official Quark Cloud Mirror',
+      'quark.dlPlatforms': 'Includes Windows · macOS · Android',
+      'quark.dlTitle': '"KuroCat 谦一_官方" Official All-in-One Folder',
+      'quark.dlOpenBtn': '☁️ Open Quark Drive ↗',
       'dl.macName': 'macOS Universal (Apple Silicon & Intel)',
       'dl.macSub': 'macOS 10.15+ (Catalina or later) Universal DMG',
       'dl.recommendedTag': 'Recommended for You',
@@ -517,9 +545,11 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.copyCmd': 'Copy Command',
       'dl.tipWv2Title': '🪟 Seeing "Could not find the WebView2 Runtime" on Windows?',
       'dl.tipWv2Btn': 'Download Microsoft WebView2 Runtime ›',
-      'dl.win7Title': '🖥️ Windows 7 SP1 (64-bit) Dedicated Portable (Bundled WebView2 109)',
-      'dl.win7Btn': 'Download Win7 Portable (179.3 MB)',
-      'dl.win7Gh': 'GitHub Official Mirror (Win7) ›',
+      'dl.win7Title': '🖥️ Windows 7 SP1 (64-bit & 32-bit) Dedicated Portable (Bundled WebView2 109)',
+      'dl.win7Btn': '64-bit Portable (179.3 MB)',
+      'dl.win7X86Btn': '32-bit Portable (159.4 MB)',
+      'dl.win7Gh': 'GitHub 64-bit ›',
+      'dl.win7X86Gh': 'GitHub 32-bit ›',
       'dl.linuxTitle': '🐧 Linux / Ubuntu 22.04+ / Debian 12+ / KylinOS V11+ (x86_64 & ARM64)',
       'dl.linuxX64Deb': 'x86_64 .deb (2.66 MB)',
       'dl.linuxArmDeb': 'ARM64 .deb (2.62 MB)',
@@ -592,6 +622,10 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
         'A free, open-source transparent desktop typing companion with instant <strong>3D / 2D</strong> switching and ultra-low GPU overhead. Includes <strong>6 cats + BigFish</strong>, head-pat purring, password privacy guard, OBS overlay, and <strong>AI cat studio</strong>.',
       'dl.sub':
         'Every build includes <strong>20%–150% smooth scaling</strong>, <strong>65% / 108-key switching</strong>, <strong>customizable tail keys</strong>, and <strong>in-app auto-updates</strong>.<br />Fast official CDN mirrors on <code>kurocat.org</code> alongside official GitHub Releases with SHA-256 verification.',
+      'quark.heroDesc':
+        '<strong>"KuroCat 谦一_官方"</strong> China fast cloud pack · Opening supports free open-source development',
+      'quark.dlBody':
+        'Official folder synced with Windows, macOS &amp; Android builds — fast direct access in China, and opening via Quark Drive also supports free open-source maintenance. In Quark Drive App, copy code <code>/~f3813cZv6O~:/</code>.',
       'dl.winDesc':
         'Starts with the 65% compact layout and adds Desktop, Start Menu & Uninstaller shortcuts. Right-click anytime for <strong>108-key full-size</strong>, <strong>custom tail keys</strong>, OBS source & one-click updates.',
       'dl.macDesc':
@@ -607,7 +641,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.tipWv2Body':
         'Occurs on older stripped Windows 10 / LTSC installs without Microsoft Edge WebView2 (<strong>Windows 7 users should use the Win7 Portable pack below</strong>). Install the official 1.8 MB Microsoft WebView2 bootstrapper via <strong>Right-click → Run as administrator</strong>.',
       'dl.win7Body':
-        'Compiled natively as PE 6.01 for Windows 7 SP1 x64 with zero Win8/Win10 DLL dependencies. Bundles Microsoft’s final Win7 offline <strong>WebView2 109.0.1518.78</strong> runtime and native 256-level per-pixel anti-aliased transparency (zero white box with or without Aero). Extract all files and run <code>KuroCat.exe</code> next to <code>WebView2Runtime</code>.',
+        'Compiled natively as PE 6.01 for Windows 7 SP1 x64 &amp; 32-bit x86 with zero Win8/Win10 DLL dependencies. Bundles Microsoft’s final Win7 offline <strong>WebView2 109.0.1518.78</strong> runtime and native 256-level per-pixel anti-aliased transparency (zero white box with or without Aero). Extract all files and run <code>KuroCat.exe</code> next to <code>WebView2Runtime</code>.',
       'dl.linuxBody':
         'Native rootless X11 <code>XRecord</code> global hooks with Wayland <code>evdev</code> fallback, borderless transparency, click-through (hold <code>Alt</code> to drag) & autostart. Requires <strong><code>glibc &gt;= 2.34</code></strong> (Ubuntu 22.04+ / Debian 12+ / KylinOS V11+; not compatible with Ubuntu 20.04 / <code>glibc 2.31</code>). Use lightweight <strong>.deb (2.7 MB)</strong> (requires <code>libwebkit2gtk-4.1-0</code>) or portable <strong>.AppImage</strong>.',
       'dl.tipGameBody':
@@ -711,7 +745,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       latestVersion: (tag) => `Latest ${tag}`,
       heroDownloadWin: (size) => `Download for Windows (${size})`,
       heroDownloadMac: (size) => `Download for macOS (${size})`,
-      heroDownloadWin7: (size) => `Download for Windows 7 (${size})`,
+      heroDownloadWin7: (size, arch) =>
+        arch === 'x86' ? `Download for Windows 7 32-bit (${size})` : `Download for Windows 7 64-bit (${size})`,
       heroDownloadLinux: (size, arch) =>
         arch === 'arm64' ? `Download for Linux ARM64 (${size})` : `Download for Linux (${size})`,
       heroDownloadAndroid: (size) => `Download Android APK (${size})`,
@@ -719,7 +754,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       heroOsHint: (os, size) => {
         if (os === 'android') return `Detected your device: <strong>Android</strong> · Tap to download the signed APK (${size})`;
         if (os === 'macos') return 'Detected your OS: <strong>macOS (Apple Silicon &amp; Intel)</strong> · Also available for Win / Linux / Android';
-        if (os === 'win7') return 'Detected your OS: <strong>Windows 7</strong> · Auto-selected offline WebView2 109 portable build';
+        if (os === 'win7-x86') return 'Detected your OS: <strong>Windows 7 (32-bit)</strong> · Auto-selected 32-bit offline WebView2 109 portable build';
+        if (os === 'win7') return 'Detected your OS: <strong>Windows 7 (64-bit)</strong> · Auto-selected offline WebView2 109 portable build';
         if (os === 'linux-arm64') return 'Detected your OS: <strong>Linux ARM64</strong> · Recommended lightweight .deb (AppImage below)';
         if (os === 'linux-x64') return 'Detected your OS: <strong>Linux x86_64</strong> · Recommended lightweight .deb (AppImage below)';
         if (os === 'ios') return 'Detected your device: <strong>iOS / iPadOS</strong> · Available for Windows, macOS, Linux &amp; Android below';
@@ -759,6 +795,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'nav.playground': '体験版',
       'nav.whale': 'クジラ娘動画',
       'nav.download': 'ダウンロード',
+      'nav.quark': '☁️ Quark クラウド',
       'nav.features': '主な機能',
       'nav.mcp': 'AI カスタム',
       'hero.eyebrow': 'Windows · macOS · Linux · Android · Open Source',
@@ -814,7 +851,16 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.winSub': 'Windows 10 / 11 (x64)',
       'dl.winTag': 'おすすめ',
       'dl.primaryBtn': '高速ダイレクトDL',
+      'dl.quarkBtn': '☁️ Quark クラウド ›',
       'dl.ghBtn': 'GitHub 公式ミラー ›',
+      'quark.badge': '☁️ 公式 Quark クラウド',
+      'quark.platforms': 'Win / Mac / Android 一括',
+      'quark.openBtn': '開く ↗',
+      'quark.copyBtn': 'コードコピー',
+      'quark.dlBadge': '☁️ 公式 Quark クラウド高速ミラー',
+      'quark.dlPlatforms': 'Windows · macOS · Android 同梱',
+      'quark.dlTitle': '「KuroCat 谦一_官方」公式パッケージフォルダ',
+      'quark.dlOpenBtn': '☁️ Quark クラウドで開く ↗',
       'dl.macName': 'macOS ユニバーサル版（M チップ & Intel）',
       'dl.macSub': 'macOS 10.15+ (Catalina 以降) Universal DMG',
       'dl.recommendedTag': 'この端末におすすめ',
@@ -829,9 +875,11 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.copyCmd': 'コマンドをコピー',
       'dl.tipWv2Title': '🪟 Windows で「Could not find the WebView2 Runtime」が出たら？',
       'dl.tipWv2Btn': 'Microsoft WebView2 をダウンロード ›',
-      'dl.win7Title': '🖥️ Windows 7 SP1（64bit）専用ポータブル版（WebView2 109 同梱）',
-      'dl.win7Btn': 'Win7 ポータブル版をダウンロード（179.3 MB）',
-      'dl.win7Gh': 'GitHub 公式ミラー（Win7 版）›',
+      'dl.win7Title': '🖥️ Windows 7 SP1（64bit / 32bit）専用ポータブル版（WebView2 109 同梱）',
+      'dl.win7Btn': '64bit ポータブル（179.3 MB）',
+      'dl.win7X86Btn': '32bit ポータブル（159.4 MB）',
+      'dl.win7Gh': 'GitHub 64bit ›',
+      'dl.win7X86Gh': 'GitHub 32bit ›',
       'dl.linuxTitle': '🐧 Linux / Ubuntu 22.04+ / Debian 12+ / KylinOS V11+（x86_64 & ARM64）',
       'dl.linuxX64Deb': 'x86_64 .deb（2.66 MB）',
       'dl.linuxArmDeb': 'ARM64 .deb（2.62 MB）',
@@ -904,6 +952,10 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
         '無料・オープンソースの透過デスクトップ相棒。<strong>3D / 2D</strong> をワンクリックで切替でき、ゲーム中も超低負荷で動作します。<strong>猫 6 種 + クジラ娘</strong>、なでなでゴロゴロ、パスワード自動保護、OBS 透過配信、<strong>AI カスタム猫</strong> に対応。',
       'dl.sub':
         '全パッケージに <strong>20%–150% 無段階ズーム</strong>・<strong>65% / 108 キー切替</strong>・<strong>しっぽキー選択</strong>・<strong>アプリ内自動更新</strong> を内蔵。<br /><code>kurocat.org</code> 公式高速ミラーと GitHub Releases 公式リンク（SHA-256 検証対応）を用意しています。',
+      'quark.heroDesc':
+        '<strong>「KuroCat 谦一_官方」</strong>公式クラウドフォルダ · 開くだけで無料開発の応援になります',
+      'quark.dlBody':
+        'Windows・macOS・Android 最新パッケージを公式同期中。リンクを開くだけで無料オープンソース開発の応援になります。Quark アプリではコード <code>/~f3813cZv6O~:/</code> をコピーして開けます。',
       'dl.winDesc':
         '初期配列は 65% コンパクト。デスクトップアイコンやアンインストーラーを自動作成し、右クリックから <strong>108 フルサイズ</strong>・<strong>しっぽキー指定</strong>・OBS 透過ソース・自動更新へいつでも切替できます。',
       'dl.macDesc':
@@ -919,7 +971,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.tipWv2Body':
         '古い Win10 / LTSC 環境で WebView2 が未導入の場合に表示されます（<strong>Windows 7 は下の専用ポータブル版をご利用ください</strong>）。右の Microsoft 公式 1.8 MB インストーラーを <strong>右クリック → 管理者として実行</strong> で導入してください。',
       'dl.win7Body':
-        'Windows 7 SP1 64bit 専用 PE 6.01 ネイティブビルド。Win7 最終版オフライン <strong>WebView2 109.0.1518.78</strong> を同梱し、Aero 有無を問わず白枠ゼロの 256 段階透過レンダリングを実現。すべて展開し <code>KuroCat.exe</code> と <code>WebView2Runtime</code> を同フォルダで起動してください。',
+        'Windows 7 SP1 64bit / 32bit 専用 PE 6.01 ネイティブビルド。Win7 最終版オフライン <strong>WebView2 109.0.1518.78</strong> を同梱し、Aero 有無を問わず白枠ゼロの 256 段階透過レンダリングを実現。すべて展開し <code>KuroCat.exe</code> と <code>WebView2Runtime</code> を同フォルダで起動してください。',
       'dl.linuxBody':
         'root 不要の X11 <code>XRecord</code> 監視と Wayland <code>evdev</code> フォールバック、透過最前面・クリック透過（<code>Alt</code> ドラッグ）・自動起動に対応。<strong><code>glibc &gt;= 2.34</code></strong>（Ubuntu 22.04+ / Debian 12+ / KylinOS V11+）が必要です。軽量な <strong>.deb（2.7 MB）</strong>（要 <code>libwebkit2gtk-4.1-0</code>）または <strong>.AppImage</strong> をお選びください。',
       'dl.tipGameBody':
@@ -1023,7 +1075,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       latestVersion: (tag) => `最新版 ${tag}`,
       heroDownloadWin: (size) => `Windows 版を無料ダウンロード（${size}）`,
       heroDownloadMac: (size) => `macOS 版を無料ダウンロード（${size}）`,
-      heroDownloadWin7: (size) => `Windows 7 版を無料ダウンロード（${size}）`,
+      heroDownloadWin7: (size, arch) =>
+        arch === 'x86' ? `Windows 7 32bit 版をダウンロード（${size}）` : `Windows 7 64bit 版をダウンロード（${size}）`,
       heroDownloadLinux: (size, arch) =>
         arch === 'arm64' ? `Linux ARM64 版を無料ダウンロード（${size}）` : `Linux 版を無料ダウンロード（${size}）`,
       heroDownloadAndroid: (size) => `Android APK を無料ダウンロード（${size}）`,
@@ -1031,7 +1084,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       heroOsHint: (os, size) => {
         if (os === 'android') return `端末を自動検出：<strong>Android</strong> · 公式署名 APK（${size}）をすぐダウンロード`;
         if (os === 'macos') return 'OS を自動検出：<strong>macOS (Apple Silicon &amp; Intel)</strong> · Win / Linux / Android 版もあり';
-        if (os === 'win7') return 'OS を自動検出：<strong>Windows 7</strong> · WebView2 109 同梱ポータブル版をおすすめ';
+        if (os === 'win7-x86') return 'OS を自動検出：<strong>Windows 7（32bit）</strong> · 32bit WebView2 109 同梱ポータブル版をおすすめ';
+        if (os === 'win7') return 'OS を自動検出：<strong>Windows 7（64bit）</strong> · WebView2 109 同梱ポータブル版をおすすめ';
         if (os === 'linux-arm64') return 'OS を自動検出：<strong>Linux ARM64</strong> · 軽量 .deb を推奨（AppImage は下部に掲載）';
         if (os === 'linux-x64') return 'OS を自動検出：<strong>Linux x86_64</strong> · 軽量 .deb を推奨（AppImage は下部に掲載）';
         if (os === 'ios') return '端末を自動検出：<strong>iOS / iPadOS</strong> · 現在は PC（Win/Mac/Linux）と Android 向けを提供中';
@@ -1071,6 +1125,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'nav.playground': '체험판',
       'nav.whale': '고래소녀 영상',
       'nav.download': '다운로드',
+      'nav.quark': '☁️ Quark 클라우드',
       'nav.features': '핵심 기능',
       'nav.mcp': 'AI 커스텀',
       'hero.eyebrow': 'Windows · macOS · Linux · Android · Open Source',
@@ -1126,7 +1181,16 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.winSub': 'Windows 10 / 11 (x64)',
       'dl.winTag': '추천',
       'dl.primaryBtn': '고속 직접 다운로드',
+      'dl.quarkBtn': '☁️ Quark 클라우드 ›',
       'dl.ghBtn': 'GitHub 공식 미러 ›',
+      'quark.badge': '☁️ 공식 Quark 클라우드',
+      'quark.platforms': 'Win / Mac / Android 통합',
+      'quark.openBtn': '바로 열기 ↗',
+      'quark.copyBtn': '코드 복사',
+      'quark.dlBadge': '☁️ 공식 Quark 클라우드 고속 미러',
+      'quark.dlPlatforms': 'Windows · macOS · Android 포함',
+      'quark.dlTitle': '「KuroCat 谦一_官方」공식 통합 폴더',
+      'quark.dlOpenBtn': '☁️ Quark 클라우드 열기 ↗',
       'dl.macName': 'macOS 유니버설 (Apple Silicon & Intel)',
       'dl.macSub': 'macOS 10.15+ (Catalina 이상) Universal DMG',
       'dl.recommendedTag': '내 기기 추천',
@@ -1141,9 +1205,11 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.copyCmd': '명령어 복사',
       'dl.tipWv2Title': '🪟 Windows에서 "Could not find the WebView2 Runtime" 오류가 뜨나요?',
       'dl.tipWv2Btn': 'Microsoft WebView2 다운로드 ›',
-      'dl.win7Title': '🖥️ Windows 7 SP1 (64비트) 전용 포터블 (WebView2 109 내장)',
-      'dl.win7Btn': 'Win7 포터블 다운로드 (179.3 MB)',
-      'dl.win7Gh': 'GitHub 공식 미러 (Win7) ›',
+      'dl.win7Title': '🖥️ Windows 7 SP1 (64비트 & 32비트) 전용 포터블 (WebView2 109 내장)',
+      'dl.win7Btn': '64비트 포터블 (179.3 MB)',
+      'dl.win7X86Btn': '32비트 포터블 (159.4 MB)',
+      'dl.win7Gh': 'GitHub 64비트 ›',
+      'dl.win7X86Gh': 'GitHub 32비트 ›',
       'dl.linuxTitle': '🐧 Linux / Ubuntu 22.04+ / Debian 12+ / KylinOS V11+ (x86_64 & ARM64)',
       'dl.linuxX64Deb': 'x86_64 .deb (2.66 MB)',
       'dl.linuxArmDeb': 'ARM64 .deb (2.62 MB)',
@@ -1216,6 +1282,10 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
         '무료 오픈소스 투명 바탕화면 키보드·마우스 펫. <strong>3D 피규어 / 2D 클래식</strong> 원클릭 전환과 초저사양 GPU 최적화로 게임 중에도 가볍게 동작합니다. <strong>고양이 6종 + 고래소녀</strong>, 쓰다듬기 골골송, 비밀번호 눈 가리기, OBS 투명 방송, <strong>AI 펫 커스텀</strong>을 지원합니다.',
       'dl.sub':
         '모든 패키지에 <strong>20%–150% 자유 크기 조절</strong>, <strong>65% / 108키 즉시 전환</strong>, <strong>커스텀 꼬리 타건</strong>, <strong>앱 내 자동 업데이트</strong>가 기본 포함됩니다.<br /><code>kurocat.org</code> 공식 고속 CDN 미러와 SHA-256 검증을 지원하는 GitHub Releases 공식 링크를 함께 제공합니다.',
+      'quark.heroDesc':
+        '<strong>「KuroCat 谦一_官方」</strong>공식 클라우드 폴더 · 열어 주시면 무료 오픈소스 유지에 힘이 됩니다',
+      'quark.dlBody':
+        'Windows, macOS, Android 최신 설치 파일이 공식 동기화되어 있습니다. Quark 클라우드로 열면 무료 오픈소스 유지보수에도 도움이 됩니다. 앱에서는 코드 <code>/~f3813cZv6O~:/</code>를 복사해 바로 열 수 있습니다.',
       'dl.winDesc':
         '기본 65% 콤팩트 배열로 시작하며 바탕화면·시작 메뉴·제거 항목을 자동 생성합니다. 우클릭 메뉴에서 <strong>108 풀배열</strong>, <strong>커스텀 꼬리 키</strong>, OBS 투명 소스, 원클릭 업데이트를 언제든 사용할 수 있습니다.',
       'dl.macDesc':
@@ -1231,7 +1301,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.tipWv2Body':
         'Microsoft Edge WebView2가 없는 구형 Win10 / LTSC 환경에서 발생합니다(<strong>Windows 7 사용자는 아래 전용 포터블 버전을 이용하세요</strong>). 오른쪽 Microsoft 공식 1.8 MB 설치 도구를 <strong>우클릭 → 관리자 권한으로 실행</strong>으로 설치하면 해결됩니다.',
       'dl.win7Body':
-        'Windows 7 SP1 64비트 전용 네이티브 PE 6.01 빌드(Win8/Win10 DLL 의존성 0). Microsoft의 마지막 Win7 오프라인 <strong>WebView2 109.0.1518.78</strong> 런타임과 256단계 픽셀 투명 안티앨리어싱 렌더링을 탑재해 Aero 여부와 무관하게 흰 테두리가 전혀 없습니다. 압축을 모두 풀고 <code>WebView2Runtime</code>과 같은 폴더의 <code>KuroCat.exe</code>를 실행하세요.',
+        'Windows 7 SP1 64비트·32비트 전용 네이티브 PE 6.01 빌드(Win8/Win10 DLL 의존성 0). Microsoft의 마지막 Win7 오프라인 <strong>WebView2 109.0.1518.78</strong> 런타임과 256단계 픽셀 투명 안티앨리어싱 렌더링을 탑재해 Aero 여부와 무관하게 흰 테두리가 전혀 없습니다. 압축을 모두 풀고 <code>WebView2Runtime</code>과 같은 폴더의 <code>KuroCat.exe</code>를 실행하세요.',
       'dl.linuxBody':
         '루트 권한 없는 X11 <code>XRecord</code> 전역 입력 감지 및 Wayland <code>evdev</code> 폴백, 투명 최상단 창, 클릭 통과(<code>Alt</code> 드래그) 및 자동 실행을 지원합니다. <strong><code>glibc &gt;= 2.34</code></strong>(Ubuntu 22.04+ / Debian 12+ / KylinOS V11+)가 필요합니다. 가벼운 <strong>.deb (2.7 MB)</strong>(<code>libwebkit2gtk-4.1-0</code> 필요) 또는 포터블 <strong>.AppImage</strong>를 선택하세요.',
       'dl.tipGameBody':
@@ -1335,7 +1405,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       latestVersion: (tag) => `최신 버전 ${tag}`,
       heroDownloadWin: (size) => `Windows용 무료 다운로드 (${size})`,
       heroDownloadMac: (size) => `macOS용 무료 다운로드 (${size})`,
-      heroDownloadWin7: (size) => `Windows 7용 무료 다운로드 (${size})`,
+      heroDownloadWin7: (size, arch) =>
+        arch === 'x86' ? `Windows 7 32비트용 다운로드 (${size})` : `Windows 7 64비트용 다운로드 (${size})`,
       heroDownloadLinux: (size, arch) =>
         arch === 'arm64' ? `Linux ARM64용 무료 다운로드 (${size})` : `Linux용 무료 다운로드 (${size})`,
       heroDownloadAndroid: (size) => `Android APK 무료 다운로드 (${size})`,
@@ -1343,7 +1414,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       heroOsHint: (os, size) => {
         if (os === 'android') return `기기 자동 감지: <strong>Android</strong> · 공식 서명 APK(${size}) 바로 다운로드`;
         if (os === 'macos') return 'OS 자동 감지: <strong>macOS (Apple Silicon &amp; Intel)</strong> · Win / Linux / Android 버전도 제공';
-        if (os === 'win7') return 'OS 자동 감지: <strong>Windows 7</strong> · WebView2 109 내장 포터블 버전 자동 추천';
+        if (os === 'win7-x86') return 'OS 자동 감지: <strong>Windows 7 (32비트)</strong> · 32비트 WebView2 109 포터블 버전 자동 추천';
+        if (os === 'win7') return 'OS 자동 감지: <strong>Windows 7 (64비트)</strong> · WebView2 109 내장 포터블 버전 자동 추천';
         if (os === 'linux-arm64') return 'OS 자동 감지: <strong>Linux ARM64</strong> · 경량 .deb 권장 (아래 AppImage 포함)';
         if (os === 'linux-x64') return 'OS 자동 감지: <strong>Linux x86_64</strong> · 경량 .deb 권장 (아래 AppImage 포함)';
         if (os === 'ios') return '기기 자동 감지: <strong>iOS / iPadOS</strong> · 현재 PC(Win/Mac/Linux)와 Android 버전을 제공합니다';
@@ -1383,6 +1455,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'nav.playground': 'Probar',
       'nav.whale': 'Video BigFish',
       'nav.download': 'Descargar',
+      'nav.quark': '☁️ Quark Drive',
       'nav.features': 'Funciones',
       'nav.mcp': 'IA MCP',
       'hero.eyebrow': 'Windows · macOS · Linux · Android · Código Abierto',
@@ -1438,7 +1511,16 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.winSub': 'Windows 10 / 11 (x64)',
       'dl.winTag': 'Recomendado',
       'dl.primaryBtn': 'Descarga directa rápida',
+      'dl.quarkBtn': '☁️ Quark Drive ›',
       'dl.ghBtn': 'Espejo oficial de GitHub ›',
+      'quark.badge': '☁️ Quark Drive Oficial',
+      'quark.platforms': 'Win / Mac / Android',
+      'quark.openBtn': 'Abrir ↗',
+      'quark.copyBtn': 'Copiar código',
+      'quark.dlBadge': '☁️ Espejo oficial en la nube Quark Drive',
+      'quark.dlPlatforms': 'Incluye Windows · macOS · Android',
+      'quark.dlTitle': 'Carpeta oficial «KuroCat 谦一_官方»',
+      'quark.dlOpenBtn': '☁️ Abrir Quark Drive ↗',
       'dl.macName': 'macOS Universal (Apple Silicon e Intel)',
       'dl.macSub': 'macOS 10.15+ (Catalina o superior) Universal DMG',
       'dl.recommendedTag': 'Recomendado para ti',
@@ -1453,9 +1535,11 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.copyCmd': 'Copiar comando',
       'dl.tipWv2Title': '🪟 ¿Aparece «Could not find the WebView2 Runtime» en Windows?',
       'dl.tipWv2Btn': 'Descargar Microsoft WebView2 Runtime ›',
-      'dl.win7Title': '🖥️ Windows 7 SP1 (64 bits) Portable dedicado (WebView2 109 incluido)',
-      'dl.win7Btn': 'Descargar Win7 Portable (179.3 MB)',
-      'dl.win7Gh': 'Espejo oficial de GitHub (Win7) ›',
+      'dl.win7Title': '🖥️ Windows 7 SP1 (64 y 32 bits) Portable dedicado (WebView2 109 incluido)',
+      'dl.win7Btn': '64 bits Portable (179.3 MB)',
+      'dl.win7X86Btn': '32 bits Portable (159.4 MB)',
+      'dl.win7Gh': 'GitHub 64 bits ›',
+      'dl.win7X86Gh': 'GitHub 32 bits ›',
       'dl.linuxTitle': '🐧 Linux / Ubuntu 22.04+ / Debian 12+ / KylinOS V11+ (x86_64 y ARM64)',
       'dl.linuxX64Deb': 'x86_64 .deb (2.66 MB)',
       'dl.linuxArmDeb': 'ARM64 .deb (2.62 MB)',
@@ -1528,6 +1612,10 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
         'Compañero de teclado y ratón transparente, gratuito y de código abierto con cambio instantáneo <strong>3D / 2D</strong> y consumo mínimo de GPU. Incluye <strong>6 gatos + BigFish</strong>, ronroneo al acariciarlo, escudo de contraseñas, overlay para OBS y <strong>estudio IA de gatos</strong>.',
       'dl.sub':
         'Cada compilación incluye <strong>escala fluida 20%–150%</strong>, <strong>cambio 65% / 108 teclas</strong>, <strong>teclas de cola personalizables</strong> y <strong>actualización automática integrada</strong>.<br />Espejos CDN oficiales y rápidos en <code>kurocat.org</code> junto con GitHub Releases oficiales y verificación SHA-256.',
+      'quark.heroDesc':
+        '<strong>«KuroCat 谦一_官方»</strong> paquete en la nube · Abrir apoya gratis el proyecto open source',
+      'quark.dlBody':
+        'Carpeta oficial sincronizada con instaladores de Windows, macOS y Android; abrir desde Quark Drive también apoya gratuitamente el mantenimiento open source. En la app Quark usa el código <code>/~f3813cZv6O~:/</code>.',
       'dl.winDesc':
         'Inicia con teclado compacto 65% y crea accesos directos en Escritorio, Menú Inicio y desinstalador. Haz clic derecho cuando quieras para <strong>108 teclas completo</strong>, <strong>teclas de cola personalizadas</strong>, fuente OBS y actualización en un clic.',
       'dl.macDesc':
@@ -1543,7 +1631,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.tipWv2Body':
         'Ocurre en instalaciones antiguas o recortadas de Windows 10 / LTSC sin Microsoft Edge WebView2 (<strong>usuarios de Windows 7: usad la versión Win7 Portable de abajo</strong>). Instala el instalador oficial de 1.8 MB de Microsoft WebView2 con <strong>Clic derecho → Ejecutar como administrador</strong>.',
       'dl.win7Body':
-        'Compilado de forma nativa como PE 6.01 para Windows 7 SP1 x64 sin dependencias DLL de Win8/Win10. Incluye el último entorno sin conexión oficial para Win7 <strong>WebView2 109.0.1518.78</strong> y transparencia antialias nativa de 256 niveles por píxel (cero recuadro blanco con o sin Aero). Extrae todos los archivos y ejecuta <code>KuroCat.exe</code> junto a <code>WebView2Runtime</code>.',
+        'Compilado de forma nativa como PE 6.01 para Windows 7 SP1 x64 y x86 (32 bits) sin dependencias DLL de Win8/Win10. Incluye el último entorno sin conexión oficial para Win7 <strong>WebView2 109.0.1518.78</strong> y transparencia antialias nativa de 256 niveles por píxel (cero recuadro blanco con o sin Aero). Extrae todos los archivos y ejecuta <code>KuroCat.exe</code> junto a <code>WebView2Runtime</code>.',
       'dl.linuxBody':
         'Hooks globales nativos X11 <code>XRecord</code> sin root con respaldo <code>evdev</code> en Wayland, transparencia sin bordes, click-through (mantén <code>Alt</code> para arrastrar) e inicio automático. Requiere <strong><code>glibc &gt;= 2.34</code></strong> (Ubuntu 22.04+ / Debian 12+ / KylinOS V11+; no compatible con Ubuntu 20.04 / <code>glibc 2.31</code>). Usa el ligero <strong>.deb (2.7 MB)</strong> (requiere <code>libwebkit2gtk-4.1-0</code>) o el portable <strong>.AppImage</strong>.',
       'dl.tipGameBody':
@@ -1647,7 +1735,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       latestVersion: (tag) => `Última versión ${tag}`,
       heroDownloadWin: (size) => `Descargar para Windows (${size})`,
       heroDownloadMac: (size) => `Descargar para macOS (${size})`,
-      heroDownloadWin7: (size) => `Descargar para Windows 7 (${size})`,
+      heroDownloadWin7: (size, arch) =>
+        arch === 'x86' ? `Descargar para Windows 7 32 bits (${size})` : `Descargar para Windows 7 64 bits (${size})`,
       heroDownloadLinux: (size, arch) =>
         arch === 'arm64' ? `Descargar Linux ARM64 (${size})` : `Descargar para Linux (${size})`,
       heroDownloadAndroid: (size) => `Descargar APK Android (${size})`,
@@ -1655,7 +1744,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       heroOsHint: (os, size) => {
         if (os === 'android') return `Dispositivo detectado: <strong>Android</strong> · Toca para descargar el APK oficial (${size})`;
         if (os === 'macos') return 'Sistema detectado: <strong>macOS (Apple Silicon e Intel)</strong> · También para Win / Linux / Android';
-        if (os === 'win7') return 'Sistema detectado: <strong>Windows 7</strong> · Recomendada la versión portátil con WebView2 109';
+        if (os === 'win7-x86') return 'Sistema detectado: <strong>Windows 7 (32 bits)</strong> · Recomendada la versión portátil 32 bits con WebView2 109';
+        if (os === 'win7') return 'Sistema detectado: <strong>Windows 7 (64 bits)</strong> · Recomendada la versión portátil con WebView2 109';
         if (os === 'linux-arm64') return 'Sistema detectado: <strong>Linux ARM64</strong> · Paquete .deb ligero recomendado (AppImage abajo)';
         if (os === 'linux-x64') return 'Sistema detectado: <strong>Linux x86_64</strong> · Paquete .deb ligero recomendado (AppImage abajo)';
         if (os === 'ios') return 'Dispositivo detectado: <strong>iOS / iPadOS</strong> · Disponible para Windows, macOS, Linux y Android abajo';
@@ -1695,6 +1785,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'nav.playground': 'Testar',
       'nav.whale': 'Vídeo BigFish',
       'nav.download': 'Baixar',
+      'nav.quark': '☁️ Quark Drive',
       'nav.features': 'Recursos',
       'nav.mcp': 'IA MCP',
       'hero.eyebrow': 'Windows · macOS · Linux · Android · Open Source',
@@ -1750,7 +1841,16 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.winSub': 'Windows 10 / 11 (x64)',
       'dl.winTag': 'Recomendado',
       'dl.primaryBtn': 'Download direto rápido',
+      'dl.quarkBtn': '☁️ Quark Drive ›',
       'dl.ghBtn': 'Espelho oficial no GitHub ›',
+      'quark.badge': '☁️ Quark Drive Oficial',
+      'quark.platforms': 'Win / Mac / Android',
+      'quark.openBtn': 'Abrir ↗',
+      'quark.copyBtn': 'Copiar código',
+      'quark.dlBadge': '☁️ Espelho oficial na nuvem Quark Drive',
+      'quark.dlPlatforms': 'Inclui Windows · macOS · Android',
+      'quark.dlTitle': 'Pasta oficial «KuroCat 谦一_官方»',
+      'quark.dlOpenBtn': '☁️ Abrir Quark Drive ↗',
       'dl.macName': 'macOS Universal (Apple Silicon e Intel)',
       'dl.macSub': 'macOS 10.15+ (Catalina ou superior) Universal DMG',
       'dl.recommendedTag': 'Recomendado p/ você',
@@ -1765,9 +1865,11 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.copyCmd': 'Copiar comando',
       'dl.tipWv2Title': '🪟 Apareceu «Could not find the WebView2 Runtime» no Windows?',
       'dl.tipWv2Btn': 'Baixar Microsoft WebView2 Runtime ›',
-      'dl.win7Title': '🖥️ Windows 7 SP1 (64 bits) Portátil dedicado (WebView2 109 incluso)',
-      'dl.win7Btn': 'Baixar Win7 Portátil (179.3 MB)',
-      'dl.win7Gh': 'Espelho oficial no GitHub (Win7) ›',
+      'dl.win7Title': '🖥️ Windows 7 SP1 (64 e 32 bits) Portátil dedicado (WebView2 109 incluso)',
+      'dl.win7Btn': '64 bits Portátil (179.3 MB)',
+      'dl.win7X86Btn': '32 bits Portátil (159.4 MB)',
+      'dl.win7Gh': 'GitHub 64 bits ›',
+      'dl.win7X86Gh': 'GitHub 32 bits ›',
       'dl.linuxTitle': '🐧 Linux / Ubuntu 22.04+ / Debian 12+ / KylinOS V11+ (x86_64 e ARM64)',
       'dl.linuxX64Deb': 'x86_64 .deb (2.66 MB)',
       'dl.linuxArmDeb': 'ARM64 .deb (2.62 MB)',
@@ -1840,6 +1942,10 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
         'Companheiro de teclado e mouse transparente, gratuito e open-source com troca instantânea <strong>3D / 2D</strong> e uso mínimo de GPU. Inclui <strong>6 gatos + BigFish</strong>, ronronado ao fazer carinho, proteção de senhas, overlay para OBS e <strong>estúdio IA de gatos</strong>.',
       'dl.sub':
         'Todas as versões incluem <strong>escala suave 20%–150%</strong>, <strong>troca 65% / 108 teclas</strong>, <strong>teclas de cauda personalizáveis</strong> e <strong>atualização automática no app</strong>.<br />Espelhos CDN oficiais rápidos em <code>kurocat.org</code> junto aos GitHub Releases oficiais com verificação SHA-256.',
+      'quark.heroDesc':
+        '<strong>«KuroCat 谦一_官方»</strong> pacote oficial na nuvem · Abrir apoia grátis o projeto open source',
+      'quark.dlBody':
+        'Pasta oficial sincronizada com instaladores de Windows, macOS e Android; abrir pelo Quark Drive também apoia gratuitamente a manutenção open source. No app Quark use o código <code>/~f3813cZv6O~:/</code>.',
       'dl.winDesc':
         'Começa com o layout compacto 65% e cria atalhos na Área de Trabalho, Menu Iniciar e desinstalador. Clique com o botão direito quando quiser para <strong>108 teclas completo</strong>, <strong>teclas de cauda</strong>, fonte OBS e atualização em um clique.',
       'dl.macDesc':
@@ -1855,7 +1961,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.tipWv2Body':
         'Ocorre em instalações antigas ou enxutas do Windows 10 / LTSC sem o Microsoft Edge WebView2 (<strong>usuários de Windows 7 devem usar o pacote Win7 Portátil abaixo</strong>). Instale o instalador oficial de 1.8 MB do Microsoft WebView2 com <strong>Botão direito → Executar como administrador</strong>.',
       'dl.win7Body':
-        'Compilado nativamente como PE 6.01 para Windows 7 SP1 x64 sem nenhuma dependência de DLL do Win8/Win10. Embute o último runtime offline oficial da Microsoft para Win7 (<strong>WebView2 109.0.1518.78</strong>) e transparência nativa de 256 níveis por pixel com antialiasing (sem caixa branca, com ou sem Aero). Extraia tudo e execute <code>KuroCat.exe</code> ao lado de <code>WebView2Runtime</code>.',
+        'Compilado nativamente como PE 6.01 para Windows 7 SP1 x64 e x86 (32 bits) sem nenhuma dependência de DLL do Win8/Win10. Embute o último runtime offline oficial da Microsoft para Win7 (<strong>WebView2 109.0.1518.78</strong>) e transparência nativa de 256 níveis por pixel com antialiasing (sem caixa branca, com ou sem Aero). Extraia tudo e execute <code>KuroCat.exe</code> ao lado de <code>WebView2Runtime</code>.',
       'dl.linuxBody':
         'Hooks globais nativos X11 <code>XRecord</code> sem root com fallback <code>evdev</code> no Wayland, transparência sem bordas, click-through (segure <code>Alt</code> para arrastar) e início automático. Requer <strong><code>glibc &gt;= 2.34</code></strong> (Ubuntu 22.04+ / Debian 12+ / KylinOS V11+; incompatível com Ubuntu 20.04 / <code>glibc 2.31</code>). Use o pacote leve <strong>.deb (2.7 MB)</strong> (requer <code>libwebkit2gtk-4.1-0</code>) ou o portátil <strong>.AppImage</strong>.',
       'dl.tipGameBody':
@@ -1959,7 +2065,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       latestVersion: (tag) => `Versão mais recente ${tag}`,
       heroDownloadWin: (size) => `Baixar para Windows (${size})`,
       heroDownloadMac: (size) => `Baixar para macOS (${size})`,
-      heroDownloadWin7: (size) => `Baixar para Windows 7 (${size})`,
+      heroDownloadWin7: (size, arch) =>
+        arch === 'x86' ? `Baixar para Windows 7 32 bits (${size})` : `Baixar para Windows 7 64 bits (${size})`,
       heroDownloadLinux: (size, arch) =>
         arch === 'arm64' ? `Baixar Linux ARM64 (${size})` : `Baixar para Linux (${size})`,
       heroDownloadAndroid: (size) => `Baixar APK Android (${size})`,
@@ -1967,7 +2074,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       heroOsHint: (os, size) => {
         if (os === 'android') return `Dispositivo detectado: <strong>Android</strong> · Toque para baixar o APK oficial (${size})`;
         if (os === 'macos') return 'Sistema detectado: <strong>macOS (Apple Silicon e Intel)</strong> · Também para Win / Linux / Android';
-        if (os === 'win7') return 'Sistema detectado: <strong>Windows 7</strong> · Selecionada a edição portátil com WebView2 109';
+        if (os === 'win7-x86') return 'Sistema detectado: <strong>Windows 7 (32 bits)</strong> · Selecionada a edição portátil 32 bits com WebView2 109';
+        if (os === 'win7') return 'Sistema detectado: <strong>Windows 7 (64 bits)</strong> · Selecionada a edição portátil com WebView2 109';
         if (os === 'linux-arm64') return 'Sistema detectado: <strong>Linux ARM64</strong> · Pacote .deb leve recomendado (AppImage abaixo)';
         if (os === 'linux-x64') return 'Sistema detectado: <strong>Linux x86_64</strong> · Pacote .deb leve recomendado (AppImage abaixo)';
         if (os === 'ios') return 'Dispositivo detectado: <strong>iOS / iPadOS</strong> · Disponível para Windows, macOS, Linux e Android abaixo';
@@ -2007,6 +2115,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'nav.playground': 'Демо',
       'nav.whale': 'Видео BigFish',
       'nav.download': 'Скачать',
+      'nav.quark': '☁️ Quark Drive',
       'nav.features': 'Функции',
       'nav.mcp': 'ИИ MCP',
       'hero.eyebrow': 'Windows · macOS · Linux · Android · Open Source',
@@ -2062,7 +2171,16 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.winSub': 'Windows 10 / 11 (x64)',
       'dl.winTag': 'Рекомендуем',
       'dl.primaryBtn': 'Быстрая прямая загрузка',
+      'dl.quarkBtn': '☁️ Quark Drive ›',
       'dl.ghBtn': 'Официальное зеркало GitHub ›',
+      'quark.badge': '☁️ Официальный Quark Drive',
+      'quark.platforms': 'Win / Mac / Android',
+      'quark.openBtn': 'Открыть ↗',
+      'quark.copyBtn': 'Копировать код',
+      'quark.dlBadge': '☁️ Официальное облачное зеркало Quark Drive',
+      'quark.dlPlatforms': 'Включает Windows · macOS · Android',
+      'quark.dlTitle': 'Официальная папка «KuroCat 谦一_官方»',
+      'quark.dlOpenBtn': '☁️ Открыть Quark Drive ↗',
       'dl.macName': 'macOS Universal (Apple Silicon и Intel)',
       'dl.macSub': 'macOS 10.15+ (Catalina и выше) Universal DMG',
       'dl.recommendedTag': 'Для вашего устройства',
@@ -2077,9 +2195,11 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.copyCmd': 'Копировать команду',
       'dl.tipWv2Title': '🪟 Ошибка «Could not find the WebView2 Runtime» в Windows?',
       'dl.tipWv2Btn': 'Скачать Microsoft WebView2 Runtime ›',
-      'dl.win7Title': '🖥️ Windows 7 SP1 (64-bit) Portable-версия (встроен WebView2 109)',
-      'dl.win7Btn': 'Скачать Win7 Portable (179.3 MB)',
-      'dl.win7Gh': 'Официальное зеркало GitHub (Win7) ›',
+      'dl.win7Title': '🖥️ Windows 7 SP1 (64-bit и 32-bit) Portable-версия (встроен WebView2 109)',
+      'dl.win7Btn': '64-bit Portable (179.3 MB)',
+      'dl.win7X86Btn': '32-bit Portable (159.4 MB)',
+      'dl.win7Gh': 'GitHub 64-bit ›',
+      'dl.win7X86Gh': 'GitHub 32-bit ›',
       'dl.linuxTitle': '🐧 Linux / Ubuntu 22.04+ / Debian 12+ / KylinOS V11+ (x86_64 и ARM64)',
       'dl.linuxX64Deb': 'x86_64 .deb (2.66 MB)',
       'dl.linuxArmDeb': 'ARM64 .deb (2.62 MB)',
@@ -2152,6 +2272,10 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
         'Бесплатный прозрачный десктоп-компаньон с открытым кодом, мгновенным переключением <strong>3D / 2D</strong> и минимальной нагрузкой на GPU. В комплекте <strong>6 котов + BigFish</strong>, мурчание при поглаживании, защита паролей, оверлей для OBS и <strong>ИИ-студия скинов</strong>.',
       'dl.sub':
         'Каждая сборка включает <strong>плавный масштаб 20%–150%</strong>, <strong>переключение 65% / 108 клавиш</strong>, <strong>настройку клавиш для хвоста</strong> и <strong>автообновление внутри приложения</strong>.<br />Быстрые официальные CDN-зеркала на <code>kurocat.org</code> вместе с официальными GitHub Releases и проверкой SHA-256.',
+      'quark.heroDesc':
+        '<strong>«KuroCat 谦一_官方»</strong> официальная папка · Переход бесплатно поддерживает проект',
+      'quark.dlBody':
+        'Официальная папка со сборками для Windows, macOS и Android — переход через Quark Drive также бесплатно поддерживает разработку KuroCat. В приложении Quark используйте код <code>/~f3813cZv6O~:/</code>.',
       'dl.winDesc':
         'По умолчанию запускается компактная 65%-клавиатура, создаются ярлыки на рабочем столе, в меню «Пуск» и деинсталлятор. По правому клику доступны <strong>полные 108 клавиш</strong>, <strong>свои клавиши хвоста</strong>, источник OBS и обновление в один клик.',
       'dl.macDesc':
@@ -2167,7 +2291,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.tipWv2Body':
         'Возникает на старых или урезанных сборках Windows 10 / LTSC без Microsoft Edge WebView2 (<strong>для Windows 7 скачайте отдельный Win7 Portable ниже</strong>). Установите официальный загрузчик Microsoft WebView2 (1.8 МБ) через <strong>ПКМ → Запуск от имени администратора</strong>.',
       'dl.win7Body':
-        'Нативно скомпилировано как PE 6.01 для Windows 7 SP1 x64 без зависимостей от DLL Win8/Win10. Встроен последний официальный офлайн-рантайм для Win7 <strong>WebView2 109.0.1518.78</strong> и попиксельная 256-уровневая прозрачность со сглаживанием (никаких белых рамок с Aero и без него). Распакуйте всё и запустите <code>KuroCat.exe</code> рядом с папкой <code>WebView2Runtime</code>.',
+        'Нативно скомпилировано как PE 6.01 для Windows 7 SP1 x64 и 32-bit x86 без зависимостей от DLL Win8/Win10. Встроен последний официальный офлайн-рантайм для Win7 <strong>WebView2 109.0.1518.78</strong> и попиксельная 256-уровневая прозрачность со сглаживанием (никаких белых рамок с Aero и без него). Распакуйте всё и запустите <code>KuroCat.exe</code> рядом с папкой <code>WebView2Runtime</code>.',
       'dl.linuxBody':
         'Нативный глобальный перехват X11 <code>XRecord</code> без root и резервный режим <code>evdev</code> для Wayland, прозрачность без рамок, пропуск кликов (удерживайте <code>Alt</code> для перетаскивания) и автозапуск. Требуется <strong><code>glibc &gt;= 2.34</code></strong> (Ubuntu 22.04+ / Debian 12+ / KylinOS V11+; несовместимо с Ubuntu 20.04 / <code>glibc 2.31</code>). Выбирайте лёгкий <strong>.deb (2.7 MB)</strong> (нужен <code>libwebkit2gtk-4.1-0</code>) или портативный <strong>.AppImage</strong>.',
       'dl.tipGameBody':
@@ -2271,7 +2395,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       latestVersion: (tag) => `Последняя версия ${tag}`,
       heroDownloadWin: (size) => `Скачать для Windows (${size})`,
       heroDownloadMac: (size) => `Скачать для macOS (${size})`,
-      heroDownloadWin7: (size) => `Скачать для Windows 7 (${size})`,
+      heroDownloadWin7: (size, arch) =>
+        arch === 'x86' ? `Скачать для Windows 7 32-bit (${size})` : `Скачать для Windows 7 64-bit (${size})`,
       heroDownloadLinux: (size, arch) =>
         arch === 'arm64' ? `Скачать Linux ARM64 (${size})` : `Скачать для Linux (${size})`,
       heroDownloadAndroid: (size) => `Скачать APK для Android (${size})`,
@@ -2279,7 +2404,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       heroOsHint: (os, size) => {
         if (os === 'android') return `Определено устройство: <strong>Android</strong> · Нажмите для загрузки официального APK (${size})`;
         if (os === 'macos') return 'Определена система: <strong>macOS (Apple Silicon и Intel)</strong> · Также есть Win / Linux / Android';
-        if (os === 'win7') return 'Определена система: <strong>Windows 7</strong> · Подобрана портативная сборка с WebView2 109';
+        if (os === 'win7-x86') return 'Определена система: <strong>Windows 7 (32-bit)</strong> · Подобрана 32-битная портативная сборка с WebView2 109';
+        if (os === 'win7') return 'Определена система: <strong>Windows 7 (64-bit)</strong> · Подобрана портативная сборка с WebView2 109';
         if (os === 'linux-arm64') return 'Определена система: <strong>Linux ARM64</strong> · Рекомендован лёгкий .deb (AppImage ниже)';
         if (os === 'linux-x64') return 'Определена система: <strong>Linux x86_64</strong> · Рекомендован лёгкий .deb (AppImage ниже)';
         if (os === 'ios') return 'Определено устройство: <strong>iOS / iPadOS</strong> · Доступно для Windows, macOS, Linux и Android ниже';
@@ -2319,6 +2445,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'nav.playground': 'Live-Demo',
       'nav.whale': 'BigFish-Video',
       'nav.download': 'Download',
+      'nav.quark': '☁️ Quark Drive',
       'nav.features': 'Funktionen',
       'nav.mcp': 'KI MCP',
       'hero.eyebrow': 'Windows · macOS · Linux · Android · Open Source',
@@ -2374,7 +2501,16 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.winSub': 'Windows 10 / 11 (x64)',
       'dl.winTag': 'Empfohlen',
       'dl.primaryBtn': 'Schneller Direktdownload',
+      'dl.quarkBtn': '☁️ Quark Drive ›',
       'dl.ghBtn': 'Offizieller GitHub-Mirror ›',
+      'quark.badge': '☁️ Offizielles Quark Drive',
+      'quark.platforms': 'Win / Mac / Android',
+      'quark.openBtn': 'Öffnen ↗',
+      'quark.copyBtn': 'Code kopieren',
+      'quark.dlBadge': '☁️ Offizieller Quark-Cloud-Mirror',
+      'quark.dlPlatforms': 'Enthält Windows · macOS · Android',
+      'quark.dlTitle': 'Offizieller Ordner „KuroCat 谦一_官方“',
+      'quark.dlOpenBtn': '☁️ Quark Drive öffnen ↗',
       'dl.macName': 'macOS Universal (Apple Silicon & Intel)',
       'dl.macSub': 'macOS 10.15+ (Catalina oder neuer) Universal DMG',
       'dl.recommendedTag': 'Für dein Gerät',
@@ -2389,9 +2525,11 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.copyCmd': 'Befehl kopieren',
       'dl.tipWv2Title': '🪟 Meldung „Could not find the WebView2 Runtime“ unter Windows?',
       'dl.tipWv2Btn': 'Microsoft WebView2 Runtime laden ›',
-      'dl.win7Title': '🖥️ Windows 7 SP1 (64-Bit) Portable-Paket (inkl. WebView2 109)',
-      'dl.win7Btn': 'Win7 Portable laden (179.3 MB)',
-      'dl.win7Gh': 'Offizieller GitHub-Mirror (Win7) ›',
+      'dl.win7Title': '🖥️ Windows 7 SP1 (64-Bit & 32-Bit) Portable-Paket (inkl. WebView2 109)',
+      'dl.win7Btn': '64-Bit Portable (179.3 MB)',
+      'dl.win7X86Btn': '32-Bit Portable (159.4 MB)',
+      'dl.win7Gh': 'GitHub 64-Bit ›',
+      'dl.win7X86Gh': 'GitHub 32-Bit ›',
       'dl.linuxTitle': '🐧 Linux / Ubuntu 22.04+ / Debian 12+ / KylinOS V11+ (x86_64 & ARM64)',
       'dl.linuxX64Deb': 'x86_64 .deb (2.66 MB)',
       'dl.linuxArmDeb': 'ARM64 .deb (2.62 MB)',
@@ -2464,6 +2602,10 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
         'Kostenloser, quelloffener Desktop-Tastatur- &amp; Maus-Begleiter mit transparentem Overlay, blitzschnellem <strong>3D / 2D</strong>-Wechsel und minimaler GPU-Last. Enthält <strong>6 Katzen + BigFish</strong>, Streichel-Schnurren, Passwort-Sichtschutz, OBS-Overlay und <strong>KI-Katzenstudio</strong>.',
       'dl.sub':
         'Jeder Build enthält <strong>stufenlose 20%–150%-Skalierung</strong>, <strong>65% / 108-Tasten-Wechsel</strong>, <strong>frei wählbare Schwanztasten</strong> und <strong>In-App-Auto-Updates</strong>.<br />Schnelle offizielle CDN-Mirrors auf <code>kurocat.org</code> neben offiziellen GitHub Releases mit SHA-256-Prüfsumme.',
+      'quark.heroDesc':
+        '<strong>„KuroCat 谦一_官方“</strong> offizieller Cloud-Ordner · Öffnen unterstützt kostenlos die Pflege',
+      'quark.dlBody':
+        'Offizieller Ordner mit Windows-, macOS- &amp; Android-Installern — das Öffnen über Quark Drive unterstützt kostenlos die Open-Source-Pflege. In der Quark-App einfach Code <code>/~f3813cZv6O~:/</code> nutzen.',
       'dl.winDesc':
         'Startet im kompakten 65%-Layout und erstellt Verknüpfungen für Desktop, Startmenü &amp; Deinstallation. Per Rechtsklick jederzeit umschaltbar auf <strong>108-Tasten-Vollformat</strong>, <strong>eigene Schwanztasten</strong>, OBS-Quelle &amp; 1-Klick-Update.',
       'dl.macDesc':
@@ -2479,7 +2621,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.tipWv2Body':
         'Tritt bei älteren oder abgespeckten Windows-10-/LTSC-Systemen ohne Microsoft Edge WebView2 auf (<strong>Windows-7-Nutzer bitte das Win7-Portable-Paket unten verwenden</strong>). Installiere den offiziellen 1.8-MB-Bootstrapper von Microsoft per <strong>Rechtsklick → Als Administrator ausführen</strong>.',
       'dl.win7Body':
-        'Nativ als PE 6.01 für Windows 7 SP1 x64 kompiliert, ganz ohne Win8/Win10-DLL-Abhängigkeiten. Enthält Microsofts finale Offline-Runtime für Win7 (<strong>WebView2 109.0.1518.78</strong>) und native 256-Stufen-Pixeltransparenz mit Kantenglättung (kein weißer Rahmen, mit oder ohne Aero). Alle Dateien entpacken und <code>KuroCat.exe</code> neben <code>WebView2Runtime</code> starten.',
+        'Nativ als PE 6.01 für Windows 7 SP1 x64 &amp; 32-Bit x86 kompiliert, ganz ohne Win8/Win10-DLL-Abhängigkeiten. Enthält Microsofts finale Offline-Runtime für Win7 (<strong>WebView2 109.0.1518.78</strong>) und native 256-Stufen-Pixeltransparenz mit Kantenglättung (kein weißer Rahmen, mit oder ohne Aero). Alle Dateien entpacken und <code>KuroCat.exe</code> neben <code>WebView2Runtime</code> starten.',
       'dl.linuxBody':
         'Native rootlose X11-<code>XRecord</code>-Hooks mit Wayland-<code>evdev</code>-Fallback, rahmenlose Transparenz, Klickdurchlässigkeit (<code>Alt</code> zum Ziehen gedrückt halten) &amp; Autostart. Erfordert <strong><code>glibc &gt;= 2.34</code></strong> (Ubuntu 22.04+ / Debian 12+ / KylinOS V11+; nicht kompatibel mit Ubuntu 20.04 / <code>glibc 2.31</code>). Wähle das schlanke <strong>.deb (2.7 MB)</strong> (benötigt <code>libwebkit2gtk-4.1-0</code>) oder das portable <strong>.AppImage</strong>.',
       'dl.tipGameBody':
@@ -2583,7 +2725,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       latestVersion: (tag) => `Aktuelle Version ${tag}`,
       heroDownloadWin: (size) => `Für Windows laden (${size})`,
       heroDownloadMac: (size) => `Für macOS laden (${size})`,
-      heroDownloadWin7: (size) => `Für Windows 7 laden (${size})`,
+      heroDownloadWin7: (size, arch) =>
+        arch === 'x86' ? `Für Windows 7 32-Bit laden (${size})` : `Für Windows 7 64-Bit laden (${size})`,
       heroDownloadLinux: (size, arch) =>
         arch === 'arm64' ? `Für Linux ARM64 laden (${size})` : `Für Linux laden (${size})`,
       heroDownloadAndroid: (size) => `Android-APK laden (${size})`,
@@ -2591,7 +2734,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       heroOsHint: (os, size) => {
         if (os === 'android') return `Gerät erkannt: <strong>Android</strong> · Tippen zum Laden der offiziellen APK (${size})`;
         if (os === 'macos') return 'System erkannt: <strong>macOS (Apple Silicon &amp; Intel)</strong> · Auch für Win / Linux / Android';
-        if (os === 'win7') return 'System erkannt: <strong>Windows 7</strong> · Automatisch gewählt: portables WebView2-109-Paket';
+        if (os === 'win7-x86') return 'System erkannt: <strong>Windows 7 (32-Bit)</strong> · Automatisch gewählt: 32-Bit WebView2-109-Paket';
+        if (os === 'win7') return 'System erkannt: <strong>Windows 7 (64-Bit)</strong> · Automatisch gewählt: portables WebView2-109-Paket';
         if (os === 'linux-arm64') return 'System erkannt: <strong>Linux ARM64</strong> · Empfohlenes schlankes .deb (AppImage unten)';
         if (os === 'linux-x64') return 'System erkannt: <strong>Linux x86_64</strong> · Empfohlenes schlankes .deb (AppImage unten)';
         if (os === 'ios') return 'Gerät erkannt: <strong>iOS / iPadOS</strong> · Verfügbar für Windows, macOS, Linux &amp; Android unten';

@@ -4,6 +4,10 @@ import path from 'node:path';
 
 export const RELEASE_VERSION = 'v5.1.3';
 export const RELEASE_VER_NUM = '5.1.3';
+export const QUARK_PAN_URL = 'https://pan.quark.cn/s/673684ea4103';
+export const QUARK_PAN_CODE = '/~f3813cZv6O~:/';
+export const QUARK_SHARE_SNIPPET =
+  '我用夸克网盘给你分享了「KuroCat 谦一_官方」，点击链接或复制整段内容，打开「夸克网盘APP」即可获取。\n/~f3813cZv6O~:/\n链接：https://pan.quark.cn/s/673684ea4103';
 
 export const VERIFIED_ASSETS = [
   {
@@ -83,6 +87,32 @@ export const VERIFIED_ASSETS = [
     file: 'KuroCat-v5.1.3-win7-x64-portable.zip',
     size: '179.3 MB',
     sha256: 'af9848ad0d108cd6e97f735f883e0eee7e8326fa298137de7e2d75832ca295f2',
+  },
+  {
+    key: 'win7-x86',
+    platform: {
+      zh: 'Windows 7 SP1 (32 位离线兼容包)',
+      en: 'Windows 7 SP1 (32-bit x86 Portable)',
+      ja: 'Windows 7 SP1 (32bit x86 ポータブル)',
+      ko: 'Windows 7 SP1 (32비트 x86 포터블)',
+      es: 'Windows 7 SP1 (32 bits x86 portátil)',
+      pt: 'Windows 7 SP1 (32 bits x86 portátil)',
+      ru: 'Windows 7 SP1 (32-bit x86 портативная)',
+      de: 'Windows 7 SP1 (32-Bit x86 Portabel)',
+    },
+    desc: {
+      zh: '内置 32 位离线 WebView2 109 内核 · 无 Aero 亦无白框',
+      en: 'Bundled 32-bit offline WebView2 109 · native per-pixel transparency',
+      ja: '32bit オフライン WebView2 109 同梱 · Aero 不要の透過描画',
+      ko: '32비트 오프라인 WebView2 109 내장 · Aero 없이도 완벽한 투명 렌더링',
+      es: 'Incluye WebView2 109 de 32 bits sin conexión · transparencia nativa sin Aero',
+      pt: 'Inclui WebView2 109 32 bits offline · transparência nativa sem precisar do Aero',
+      ru: 'Встроенный 32-битный офлайн WebView2 109 · нативная прозрачность без Aero',
+      de: 'Integriertes 32-Bit-Offline-WebView2 109 · native Pixel-Transparenz ohne Aero',
+    },
+    file: 'KuroCat-v5.1.3-win7-x86-portable.zip',
+    size: '159.4 MB',
+    sha256: '31fb5ef6638139eac9f99ac6107b810805fc945bc287bf1e712a303247a4c81e',
   },
   {
     key: 'linux-x64-deb',
@@ -237,9 +267,11 @@ const NAV_I18N = {
     mcp: 'AI 伴侣 & MCP',
     security: '防伪安全公告',
     github: 'GitHub',
-    officialStrip: '🔒 唯一官方渠道：kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap（⚠️ 谨防假冒站 kurocat.net 分发的 64 MB 疑似木马假包）',
+    officialStrip: '🔒 唯一官方渠道：kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap · 夸克网盘（KuroCat 谦一_官方）（⚠️ 谨防假冒站 kurocat.net 分发的 64 MB 疑似木马假包）',
     ctaPlay: '打开 3D 在线试玩 →',
     ctaDl: '免费下载最新版 →',
+    ctaQuark: '☁️ 夸克网盘（Win/Mac/安卓）↗',
+    quarkBtn: '☁️ 夸克网盘',
     copied: '已复制 ✓',
     copy: '复制',
     cdnBtn: '官网高速直链',
@@ -254,9 +286,11 @@ const NAV_I18N = {
     mcp: 'AI & MCP Studio',
     security: 'Security Advisory',
     github: 'GitHub',
-    officialStrip: '🔒 Official channels only: kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap (⚠️ WARNING: kurocat.net distributes a fake 64 MB padded ZIP — do NOT run it)',
+    officialStrip: '🔒 Official channels only: kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap · Quark Drive (Win/Mac/Android) (⚠️ WARNING: kurocat.net distributes a fake 64 MB padded ZIP — do NOT run it)',
     ctaPlay: 'Try Live 3D Playground →',
     ctaDl: 'Free Official Download →',
+    ctaQuark: '☁️ Quark Drive (Win/Mac/Android) ↗',
+    quarkBtn: '☁️ Quark Drive',
     copied: 'Copied ✓',
     copy: 'Copy',
     cdnBtn: 'Official CDN',
@@ -271,9 +305,11 @@ const NAV_I18N = {
     mcp: 'AI & MCP',
     security: '偽サイト警告',
     github: 'GitHub',
-    officialStrip: '🔒 公式配布元のみ：kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap（⚠️ 偽サイト kurocat.net の 64 MB 不正 ZIP に注意）',
+    officialStrip: '🔒 公式配布元のみ：kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap · Quark クラウド（⚠️ 偽サイト kurocat.net の 64 MB 不正 ZIP に注意）',
     ctaPlay: 'ブラウザで 3D 体験する →',
     ctaDl: '最新公式版を無料ダウンロード →',
+    ctaQuark: '☁️ Quark クラウド (Win/Mac/Android) ↗',
+    quarkBtn: '☁️ Quark クラウド',
     copied: 'コピー済 ✓',
     copy: 'コピー',
     cdnBtn: '公式高速ミラー',
@@ -288,9 +324,11 @@ const NAV_I18N = {
     mcp: 'AI & MCP',
     security: '보안 공지',
     github: 'GitHub',
-    officialStrip: '🔒 유일한 공식 채널: kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap (⚠️ 사칭 사이트 kurocat.net의 64 MB 변조 ZIP 주의)',
+    officialStrip: '🔒 유일한 공식 채널: kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap · Quark 클라우드 (⚠️ 사칭 사이트 kurocat.net의 64 MB 변조 ZIP 주의)',
     ctaPlay: '3D 실시간 체험 열기 →',
     ctaDl: '공식 최신 버전 무료 다운로드 →',
+    ctaQuark: '☁️ Quark 클라우드 (Win/Mac/Android) ↗',
+    quarkBtn: '☁️ Quark 클라우드',
     copied: '복사됨 ✓',
     copy: '복사',
     cdnBtn: '공식 고속 CDN',
@@ -305,9 +343,11 @@ const NAV_I18N = {
     mcp: 'IA y MCP Studio',
     security: 'Aviso de seguridad',
     github: 'GitHub',
-    officialStrip: '🔒 Solo canales oficiales: kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap (⚠️ AVISO: kurocat.net distribuye un ZIP falso de 64 MB — NO lo ejecutes)',
+    officialStrip: '🔒 Solo canales oficiales: kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap · Quark Drive (⚠️ AVISO: kurocat.net distribuye un ZIP falso de 64 MB — NO lo ejecutes)',
     ctaPlay: 'Probar 3D en vivo →',
     ctaDl: 'Descarga oficial gratis →',
+    ctaQuark: '☁️ Quark Drive (Win/Mac/Android) ↗',
+    quarkBtn: '☁️ Quark Drive',
     copied: 'Copiado ✓',
     copy: 'Copiar',
     cdnBtn: 'CDN oficial',
@@ -322,9 +362,11 @@ const NAV_I18N = {
     mcp: 'IA & MCP Studio',
     security: 'Aviso de segurança',
     github: 'GitHub',
-    officialStrip: '🔒 Apenas canais oficiais: kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap (⚠️ ALERTA: kurocat.net distribui um ZIP falso de 64 MB — NÃO execute)',
+    officialStrip: '🔒 Apenas canais oficiais: kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap · Quark Drive (⚠️ ALERTA: kurocat.net distribui um ZIP falso de 64 MB — NÃO execute)',
     ctaPlay: 'Testar 3D ao vivo →',
     ctaDl: 'Download oficial grátis →',
+    ctaQuark: '☁️ Quark Drive (Win/Mac/Android) ↗',
+    quarkBtn: '☁️ Quark Drive',
     copied: 'Copiado ✓',
     copy: 'Copiar',
     cdnBtn: 'CDN oficial',
@@ -339,9 +381,11 @@ const NAV_I18N = {
     mcp: 'ИИ и MCP',
     security: 'Безопасность',
     github: 'GitHub',
-    officialStrip: '🔒 Только официальные каналы: kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap (⚠️ ОСТОРОЖНО: фейк-сайт kurocat.net распространяет поддельный ZIP 64 МБ — НЕ запускайте)',
+    officialStrip: '🔒 Только официальные каналы: kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap · Quark Drive (⚠️ ОСТОРОЖНО: фейк-сайт kurocat.net распространяет поддельный ZIP 64 МБ — НЕ запускайте)',
     ctaPlay: 'Открыть 3D-демо →',
     ctaDl: 'Скачать бесплатно →',
+    ctaQuark: '☁️ Quark Drive (Win/Mac/Android) ↗',
+    quarkBtn: '☁️ Quark Drive',
     copied: 'Скопировано ✓',
     copy: 'Копировать',
     cdnBtn: 'Официальный CDN',
@@ -356,9 +400,11 @@ const NAV_I18N = {
     mcp: 'KI & MCP-Studio',
     security: 'Sicherheitshinweis',
     github: 'GitHub',
-    officialStrip: '🔒 Nur offizielle Kanäle: kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap (⚠️ WARNUNG: kurocat.net verbreitet ein gefälschtes 64-MB-ZIP — NICHT ausführen)',
+    officialStrip: '🔒 Nur offizielle Kanäle: kurocat.org · github.com/qianyiai/KuroCat · qianyiai/homebrew-tap · Quark Drive (⚠️ WARNUNG: kurocat.net verbreitet ein gefälschtes 64-MB-ZIP — NICHT ausführen)',
     ctaPlay: 'Live-3D-Demo testen →',
     ctaDl: 'Kostenloser Download →',
+    ctaQuark: '☁️ Quark Drive (Win/Mac/Android) ↗',
+    quarkBtn: '☁️ Quark Drive',
     copied: 'Kopiert ✓',
     copy: 'Kopieren',
     cdnBtn: 'Offizielles CDN',
@@ -517,7 +563,36 @@ h1 {
 }
 .btn:hover { transform: translateY(-1px); border-color: rgba(255,255,255,0.28); }
 .btn-lime { background: var(--lime); color: var(--lime-ink); border-color: transparent; }
+.btn-quark {
+  background: linear-gradient(135deg, #38bdf8 0%, #60a5fa 100%);
+  color: #06121f; border-color: transparent; font-weight: 700;
+}
+.btn-quark:hover { filter: brightness(1.07); }
 .btn-sm { padding: 6px 12px; font-size: 12px; }
+.quark-card {
+  border-color: rgba(56, 189, 248, 0.42);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.11) 0%, rgba(212, 240, 68, 0.05) 55%, var(--surface) 100%);
+  display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+}
+.quark-card-copy { flex: 1 1 340px; min-width: 0; }
+.quark-pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; color: #bae6fd; background: rgba(56, 189, 248, 0.18);
+  border: 1px solid rgba(125, 211, 252, 0.42); margin-bottom: 8px;
+}
+.quark-card h2 { margin: 0 0 6px; font-size: 18.5px; }
+.quark-card p { margin: 0; font-size: 13.5px; color: var(--sub); }
+.quark-card-actions { display: flex; flex-direction: column; align-items: stretch; gap: 8px; flex: 0 1 240px; min-width: 210px; }
+.quark-code-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 6px 8px 6px 11px; border-radius: 10px; background: rgba(0, 0, 0, 0.36); border: 1px solid var(--border);
+}
+.quark-code-row code { font-size: 11.5px; color: #bae6fd; user-select: all; }
+.quark-code-row button {
+  cursor: pointer; background: rgba(255,255,255,0.09); color: var(--text); border: 1px solid var(--border);
+  border-radius: 999px; padding: 3px 10px; font-size: 11.5px; font-family: inherit; white-space: nowrap;
+}
+.quark-code-row button:hover { background: var(--lime); color: var(--lime-ink); border-color: transparent; }
 html.official-alert-dismissed .official-bar { display: none; }
 .official-bar {
   position: relative;
@@ -617,6 +692,7 @@ tr.row-recommended td:first-child { box-shadow: inset 3px 0 0 var(--lime); }
   .nav-right { width: 100%; justify-content: space-between; }
   .lang-menu { right: 0; max-width: calc(100vw - 24px); }
   .rec-banner-actions { width: 100%; align-items: stretch; }
+  .quark-card-actions { width: 100%; flex-basis: 100%; min-width: 0; }
 }
 `;
 
@@ -886,6 +962,7 @@ function renderPage({ locale, slug, title, description, eyebrow, h1, lead, bread
       <p class="lead">${esc(lead)}</p>
       <div class="cta-row">
         <a class="btn btn-lime" href="${slug === 'download' ? '#files' : pagePath(locale, 'download')}">${esc(nav.ctaDl)}</a>
+        <a class="btn btn-quark" href="${QUARK_PAN_URL}" target="_blank" rel="noopener">${esc(nav.ctaQuark)}</a>
         <a class="btn" href="${homeHref}">${esc(nav.ctaPlay)}</a>
         <a class="btn" href="https://github.com/qianyiai/KuroCat" target="_blank" rel="me noopener">GitHub ★</a>
       </div>
@@ -991,7 +1068,7 @@ function buildDownloadPage(locale, today) {
       faqs: [
         { q: 'KuroCat 的唯一官方下载地址是什么？', a: '唯一官方网站为 https://kurocat.org/download/，官方 GitHub Releases 为 https://github.com/qianyiai/KuroCat/releases，macOS 官方源为 qianyiai/homebrew-tap。其他第三方同名域名（如 kurocat.net）均非官方维护。' },
         { q: '如何验证下载的安装包没有被第三方篡改？', a: '下载后计算文件 SHA-256（Windows 用 Get-FileHash，macOS/Linux 用 shasum -a 256），与本页及 GitHub Releases 公布的 64 位 SHA-256 摘要完全一致即可确认原版无篡改。' },
-        { q: 'Windows 7 或银河麒麟 / 统信 Linux 能用吗？', a: '可以。Windows 7 SP1 64 位请下载内置 WebView2 109 的 win7-x64-portable.zip；Ubuntu 22.04+ / Debian 12+ / 银河麒麟 V11+（glibc >= 2.34）支持 x86_64 与 ARM64 的 .deb 及 .AppImage。' },
+        { q: 'Windows 7 或银河麒麟 / 统信 Linux 能用吗？', a: '可以。Windows 7 SP1 同时提供 64 位（win7-x64-portable.zip）与 32 位（win7-x86-portable.zip）离线绿包，均内置 WebView2 109；Ubuntu 22.04+ / Debian 12+ / 银河麒麟 V11+（glibc >= 2.34）支持 x86_64 与 ARM64 的 .deb 及 .AppImage。' },
       ],
     },
     en: {
@@ -1180,16 +1257,79 @@ function buildDownloadPage(locale, today) {
     de: { badge: 'Für dein Gerät empfohlen', iosTitle: 'iOS / iPadOS erkannt', iosDesc: 'KuroCat ist derzeit für Windows, macOS, Linux und Android in der Liste unten verfügbar.', dlBtn: 'Schneller CDN-Download', ghBtn: 'GitHub Releases ›' },
   }[locale];
 
+  const quarkI18n = {
+    zh: {
+      badge: '☁️ 官方夸克网盘高速分流 · Win / Mac / 安卓',
+      title: '「KuroCat 谦一_官方」全平台合集文件夹',
+      desc: '官方同步更新 Windows、macOS、Android 安装包，国内直连不限速、支持一键转存；点开获取即免费支持开源维护。打开「夸克网盘 APP」也可复制口令直达。',
+      openBtn: '☁️ 打开夸克网盘获取 ↗',
+      copyBtn: '复制口令',
+    },
+    en: {
+      badge: '☁️ Official Quark Cloud Mirror · Win / macOS / Android',
+      title: '"KuroCat 谦一_官方" All-in-One Official Folder',
+      desc: 'Official fast China cloud mirror bundling Windows, macOS & Android installers — opening via Quark Drive also supports free open-source maintenance.',
+      openBtn: '☁️ Open Quark Drive ↗',
+      copyBtn: 'Copy Code',
+    },
+    ja: {
+      badge: '☁️ 公式 Quark クラウドミラー · Win / macOS / Android',
+      title: '「KuroCat 谦一_官方」公式パッケージフォルダ',
+      desc: 'Windows・macOS・Android 公式インストーラーをまとめた高速ミラーです。リンクを開くだけで無料オープンソース開発の応援になります。',
+      openBtn: '☁️ Quark クラウドを開く ↗',
+      copyBtn: 'コードをコピー',
+    },
+    ko: {
+      badge: '☁️ 공식 Quark 클라우드 미러 · Win / macOS / Android',
+      title: '「KuroCat 谦一_官方」공식 패키지 폴더',
+      desc: 'Windows, macOS, Android 공식 설치 파일이 한곳에 정리되어 있습니다. 링크를 열어 다운로드하면 무료 오픈소스 유지보수에도 큰 힘이 됩니다.',
+      openBtn: '☁️ Quark 클라우드 열기 ↗',
+      copyBtn: '코드 복사',
+    },
+    es: {
+      badge: '☁️ Espejo oficial Quark Drive · Win / macOS / Android',
+      title: 'Carpeta oficial «KuroCat 谦一_官方»',
+      desc: 'Espejo oficial en la nube con instaladores de Windows, macOS y Android; abrir este enlace también apoya gratis el mantenimiento open source.',
+      openBtn: '☁️ Abrir Quark Drive ↗',
+      copyBtn: 'Copiar código',
+    },
+    pt: {
+      badge: '☁️ Espelho oficial Quark Drive · Win / macOS / Android',
+      title: 'Pasta oficial «KuroCat 谦一_官方»',
+      desc: 'Espelho oficial na nuvem com instaladores de Windows, macOS e Android — abrir pelo Quark Drive também apoia gratuitamente o projeto open source.',
+      openBtn: '☁️ Abrir Quark Drive ↗',
+      copyBtn: 'Copiar código',
+    },
+    ru: {
+      badge: '☁️ Официальное зеркало Quark Drive · Win / macOS / Android',
+      title: 'Официальная папка «KuroCat 谦一_官方»',
+      desc: 'Официальное облачное зеркало со сборками для Windows, macOS и Android — переход по ссылке бесплатно поддерживает разработку проекта.',
+      openBtn: '☁️ Открыть Quark Drive ↗',
+      copyBtn: 'Копировать код',
+    },
+    de: {
+      badge: '☁️ Offizieller Quark-Drive-Mirror · Win / macOS / Android',
+      title: 'Offizieller Ordner „KuroCat 谦一_官方“',
+      desc: 'Offizieller Cloud-Mirror mit Installern für Windows, macOS & Android — das Öffnen über Quark Drive unterstützt kostenlos die Open-Source-Pflege.',
+      openBtn: '☁️ Quark Drive öffnen ↗',
+      copyBtn: 'Code kopieren',
+    },
+  }[locale];
+
+  const QUARK_ASSET_KEYS = new Set(['win64', 'macos', 'android']);
   const rows = VERIFIED_ASSETS.map((a) => {
     const cdnUrl = `/releases/${RELEASE_VERSION}/${a.file}`;
     const ghUrl = `https://github.com/qianyiai/KuroCat/releases/download/${RELEASE_VERSION}/${a.file}`;
+    const quarkRowBtn = QUARK_ASSET_KEYS.has(a.key)
+      ? `\n                <a class="btn btn-quark btn-sm" href="${QUARK_PAN_URL}" target="_blank" rel="noopener">${esc(nav.quarkBtn)}</a>`
+      : '';
     return `<tr data-asset-key="${esc(a.key)}">
             <td><strong>${esc(a.platform[locale])}</strong><br /><span style="font-size:12px;color:var(--dim)">${esc(a.desc[locale])}</span></td>
             <td><code>${esc(a.file)}</code><span class="sha">${esc(a.sha256)}</span></td>
             <td style="white-space:nowrap">${esc(a.size)}</td>
             <td style="white-space:nowrap">
               <div style="display:flex;flex-direction:column;gap:6px">
-                <a class="btn btn-lime btn-sm" href="${cdnUrl}" download>${esc(nav.cdnBtn)}</a>
+                <a class="btn btn-lime btn-sm" href="${cdnUrl}" download>${esc(nav.cdnBtn)}</a>${quarkRowBtn}
                 <a class="btn btn-sm" href="${ghUrl}" target="_blank" rel="noopener">${esc(nav.ghBtn)}</a>
               </div>
             </td>
@@ -1214,6 +1354,21 @@ function buildDownloadPage(locale, today) {
   const xattrCmd = 'xattr -cr /Applications/KuroCat.app && open /Applications/KuroCat.app';
 
   const bodyHtml = `
+    <section class="card quark-card" id="quark-mirror">
+      <div class="quark-card-copy">
+        <span class="quark-pill">${esc(quarkI18n.badge)}</span>
+        <h2>${esc(quarkI18n.title)}</h2>
+        <p>${esc(quarkI18n.desc)}</p>
+      </div>
+      <div class="quark-card-actions">
+        <a class="btn btn-quark" href="${QUARK_PAN_URL}" target="_blank" rel="noopener">${esc(quarkI18n.openBtn)}</a>
+        <div class="quark-code-row">
+          <code>${esc(QUARK_PAN_CODE)}</code>
+          <button type="button" data-copy="${esc(QUARK_SHARE_SNIPPET)}">${esc(quarkI18n.copyBtn)}</button>
+        </div>
+      </div>
+    </section>
+
     <section class="card rec-banner" id="dl-auto-recommend">
       <div class="rec-banner-copy">
         <span class="rec-pill" id="rec-os-badge">✨ ${esc(recI18n.badge)}</span>
@@ -1250,7 +1405,8 @@ function buildDownloadPage(locale, today) {
             if (p === 'android') return 'android';
             if (p === 'ios' || p === 'iphone' || p === 'ipad') return 'ios';
             if (p === 'mac' || p === 'macos') return 'macos';
-            if (p === 'win7') return 'win7';
+            if (p === 'win7-x86' || p === 'win7-32' || p === 'win7x86') return 'win7-x86';
+            if (p === 'win7' || p === 'win7-x64') return 'win7';
             if (p === 'win' || p === 'windows') return 'win64';
             if (p === 'linux-arm64' || p === 'arm64') return 'linux-arm64-deb';
             if (p === 'linux' || p === 'linux-x64') return 'linux-x64-deb';
@@ -1260,7 +1416,7 @@ function buildDownloadPage(locale, today) {
           var all = ua + ' ' + plat;
           if (/Android/i.test(all)) return 'android';
           if (/iPhone|iPad|iPod/i.test(all) || (/MacIntel/i.test(navigator.platform || '') && navigator.maxTouchPoints > 1)) return 'ios';
-          if (/Windows NT 6\\.[123]/i.test(ua)) return 'win7';
+          if (/Windows NT 6\\.[123]/i.test(ua)) return /WOW64|Win64|x64|amd64/i.test(ua) ? 'win7' : 'win7-x86';
           if (/Win/i.test(plat) || /Windows/i.test(ua)) return 'win64';
           if (/Mac|Macintosh/i.test(all)) return 'macos';
           if (/Linux|X11/i.test(all)) return /aarch64|arm64|armv8/i.test(all) ? 'linux-arm64-deb' : 'linux-x64-deb';
@@ -2154,9 +2310,10 @@ function buildSecurityPage(locale, today) {
       h1: 'KuroCat 官方防伪公告：谨防假冒站 kurocat.net 木马风险',
       lead: 'KuroCat 由谦一（@qianyiai）唯一开源维护。近期出现高仿域名 kurocat.net 冒充「KuroCat 官网」并向 Windows 用户分发非官方 64.25 MB 篡改压缩包。请认准唯一官网 kurocat.org 与官方 GitHub。',
       breadcrumb: '防伪安全公告',
-      officialTitle: '✅ 唯一受信任的官方渠道（仅此 3 处）',
+      officialTitle: '✅ 唯一受信任的官方渠道（仅此 4 处）',
       officialList: [
         '唯一官方网站与高速下载中心：https://kurocat.org/ 与 https://kurocat.org/download/',
+        '官方夸克网盘分流（含 Win / macOS / Android）：https://pan.quark.cn/s/673684ea4103（「KuroCat 谦一_官方」，口令 /~f3813cZv6O~:/）',
         '唯一官方开源仓库与 Releases：https://github.com/qianyiai/KuroCat',
         '唯一官方 macOS Homebrew 源：https://github.com/qianyiai/homebrew-tap（brew install --cask qianyiai/tap/kurocat）',
       ],
@@ -2195,6 +2352,7 @@ function buildSecurityPage(locale, today) {
       officialTitle: '✅ ONLY Official & Trusted Distribution Channels',
       officialList: [
         'Official Website & Verified CDN: https://kurocat.org/ and https://kurocat.org/en/download/',
+        'Official Quark Cloud Mirror (Win / macOS / Android): https://pan.quark.cn/s/673684ea4103 ("KuroCat 谦一_官方")',
         'Official GitHub Repository & Releases: https://github.com/qianyiai/KuroCat',
         'Official macOS Homebrew Tap: https://github.com/qianyiai/homebrew-tap (brew install --cask qianyiai/tap/kurocat)',
       ],
@@ -2232,6 +2390,7 @@ function buildSecurityPage(locale, today) {
       officialTitle: '✅ 唯一の公式・安全な配布チャネル',
       officialList: [
         '公式ウェブサイト＆ダウンロード：https://kurocat.org/ja/ および https://kurocat.org/ja/download/',
+        '公式 Quark クラウドミラー（Win / macOS / Android）：https://pan.quark.cn/s/673684ea4103（「KuroCat 谦一_官方」）',
         '公式 GitHub リポジトリ：https://github.com/qianyiai/KuroCat',
         '公式 macOS Homebrew Tap：https://github.com/qianyiai/homebrew-tap',
       ],
@@ -2266,6 +2425,7 @@ function buildSecurityPage(locale, today) {
       officialTitle: '✅ 유일한 공식 신뢰 채널',
       officialList: [
         '공식 웹사이트 및 다운로드: https://kurocat.org/ko/ · https://kurocat.org/ko/download/',
+        '공식 Quark 클라우드 미러 (Win / macOS / Android): https://pan.quark.cn/s/673684ea4103 (「KuroCat 谦一_官方」)',
         '공식 GitHub 저장소: https://github.com/qianyiai/KuroCat',
         '공식 macOS Homebrew Tap: https://github.com/qianyiai/homebrew-tap',
       ],
@@ -2300,6 +2460,7 @@ function buildSecurityPage(locale, today) {
       officialTitle: '✅ ÚNICOS canales oficiales y de confianza',
       officialList: [
         'Sitio web oficial y CDN verificado: https://kurocat.org/es/ y https://kurocat.org/es/download/',
+        'Espejo oficial en Quark Drive (Win / macOS / Android): https://pan.quark.cn/s/673684ea4103 («KuroCat 谦一_官方»)',
         'Repositorio y Releases oficiales en GitHub: https://github.com/qianyiai/KuroCat',
         'Homebrew Tap oficial de macOS: https://github.com/qianyiai/homebrew-tap (brew install --cask qianyiai/tap/kurocat)',
       ],
@@ -2338,6 +2499,7 @@ function buildSecurityPage(locale, today) {
       officialTitle: '✅ ÚNICOS canais oficiais e confiáveis',
       officialList: [
         'Site oficial e CDN verificado: https://kurocat.org/pt/ e https://kurocat.org/pt/download/',
+        'Espelho oficial no Quark Drive (Win / macOS / Android): https://pan.quark.cn/s/673684ea4103 («KuroCat 谦一_官方»)',
         'Repositório e Releases oficiais no GitHub: https://github.com/qianyiai/KuroCat',
         'Homebrew Tap oficial para macOS: https://github.com/qianyiai/homebrew-tap (brew install --cask qianyiai/tap/kurocat)',
       ],
@@ -2376,6 +2538,7 @@ function buildSecurityPage(locale, today) {
       officialTitle: '✅ ЕДИНСТВЕННЫЕ официальные и доверенные каналы',
       officialList: [
         'Официальный сайт и проверенный CDN: https://kurocat.org/ru/ и https://kurocat.org/ru/download/',
+        'Официальное зеркало Quark Drive (Win / macOS / Android): https://pan.quark.cn/s/673684ea4103 («KuroCat 谦一_官方»)',
         'Официальный репозиторий и релизы GitHub: https://github.com/qianyiai/KuroCat',
         'Официальный Homebrew Tap для macOS: https://github.com/qianyiai/homebrew-tap (brew install --cask qianyiai/tap/kurocat)',
       ],
@@ -2414,6 +2577,7 @@ function buildSecurityPage(locale, today) {
       officialTitle: '✅ EINZIGE offizielle und vertrauenswürdige Kanäle',
       officialList: [
         'Offizielle Website & verifiziertes CDN: https://kurocat.org/de/ und https://kurocat.org/de/download/',
+        'Offizieller Quark-Drive-Mirror (Win / macOS / Android): https://pan.quark.cn/s/673684ea4103 („KuroCat 谦一_官方“)',
         'Offizielles GitHub-Repository & Releases: https://github.com/qianyiai/KuroCat',
         'Offizieller macOS Homebrew Tap: https://github.com/qianyiai/homebrew-tap (brew install --cask qianyiai/tap/kurocat)',
       ],

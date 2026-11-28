@@ -600,6 +600,7 @@ All official downloads, documentation, and source code are published exclusively
 - [MCP AI Cat Studio & Coding Companion Guide](https://kurocat.org/mcp/): Built-in Stdio & Streamable HTTP (\`127.0.0.1:27420/mcp\`) setup for Claude Desktop, Cursor, Antigravity, and Windsurf, plus AI cat sculpting prompts (also at \`/en/mcp/\`, \`/ja/mcp/\`, \`/ko/mcp/\`, \`/es/mcp/\`, \`/pt/mcp/\`, \`/ru/mcp/\`, \`/de/mcp/\`).
 - [Official Security Advisory — Fake Site kurocat.net Warning](https://kurocat.org/security/): Forensic evidence and IoCs warning users NOT to download the unauthorized 64.25 MB padded ZIP (\`KuroCat.v5.1.0.zip\`, SHA-256 \`19ad10c48a7448584f1d00aa086f52b38231bacd659f04e83d3cefc60209796d\`) hosted by impersonator \`kurocat.net\` (also at \`/en/security/\`, \`/ja/security/\`, \`/ko/security/\`, \`/es/security/\`, \`/pt/security/\`, \`/ru/security/\`, \`/de/security/\`).
 - [Official GitHub Repository](https://github.com/qianyiai/KuroCat): MIT open-source codebase, issue tracker, and GitHub Releases.
+- [Official Quark Cloud Mirror (Win / macOS / Android)](https://pan.quark.cn/s/673684ea4103): Official China fast cloud folder \`KuroCat 谦一_官方\` (Quark App share code \`/~f3813cZv6O~:/\`).
 - [Official macOS Homebrew Tap](https://github.com/qianyiai/homebrew-tap): Install on macOS via \`brew install --cask qianyiai/tap/kurocat\`.
 - [Author Homepage (Qianyi)](https://qianyi.one/): Author profile and projects.
 - [Full Technical Reference](https://kurocat.org/llms-full.txt): Complete architecture, platform support, AI companion hooks, MCP tools, and direct release URLs.
@@ -608,6 +609,7 @@ All official downloads, documentation, and source code are published exclusively
 
 - Windows 10 / 11 (x64 NSIS Installer, ~2.40 MB): \`https://kurocat.org/releases/v5.1.3/KuroCat-5.1.3-x64-setup.exe\`
 - Windows 7 SP1 (x64 Portable with offline WebView2 109): \`https://kurocat.org/releases/v5.1.3/KuroCat-v5.1.3-win7-x64-portable.zip\`
+- Windows 7 SP1 (32-bit x86 Portable with offline WebView2 109): \`https://kurocat.org/releases/v5.1.3/KuroCat-v5.1.3-win7-x86-portable.zip\`
 - macOS 10.15 Catalina+ (Apple Silicon M1–M4 & Intel Universal DMG): \`https://kurocat.org/releases/v5.1.3/KuroCat-v5.1.3-macos-universal.dmg\` or \`brew install --cask qianyiai/tap/kurocat\`
 - Linux (Ubuntu 22.04+, Debian 12+, KylinOS V11+ — x86_64 & ARM64 \`.deb\` / \`.AppImage\`): \`https://kurocat.org/#linux-download\`
 - Android APK: \`https://kurocat.org/releases/v5.1.3/KuroCat-v5.1.3-android.apk\`
@@ -627,8 +629,9 @@ const llmsFullTxt = `# KuroCat — Complete Technical & Official Source Referenc
 
 KuroCat is developed and maintained exclusively by Qianyi (\`@qianyiai\`). The ONLY official distribution channels are:
 1. Official Website: https://kurocat.org/ (Multilingual: https://kurocat.org/en/ , https://kurocat.org/ja/ , https://kurocat.org/ko/ , https://kurocat.org/es/ , https://kurocat.org/pt/ , https://kurocat.org/ru/ , https://kurocat.org/de/ )
-2. GitHub Releases & Source Code: https://github.com/qianyiai/KuroCat
-3. Official macOS Homebrew Tap: https://github.com/qianyiai/homebrew-tap (\`brew install --cask qianyiai/tap/kurocat\`)
+2. Official Quark Cloud Mirror (China — Win / macOS / Android): https://pan.quark.cn/s/673684ea4103 (\`KuroCat 谦一_官方\`, share code \`/~f3813cZv6O~:/\`)
+3. GitHub Releases & Source Code: https://github.com/qianyiai/KuroCat
+4. Official macOS Homebrew Tap: https://github.com/qianyiai/homebrew-tap (\`brew install --cask qianyiai/tap/kurocat\`)
 
 Any third-party domain claiming to be an official site or mirror (including \`kurocat.net\`) or unofficial forks (such as \`chanke17/KuroCat\`) are unaffiliated with the author and not officially maintained. Legacy URL \`https://qianyi.one/kurocat/\` permanently redirects (HTTP 301) to \`https://kurocat.org/\`.
 
@@ -662,6 +665,7 @@ Every topic hub is pre-rendered in Chinese (\`zh-CN\`), English (\`/en/\`), Japa
 
 - Windows 10/11 (x64 Installer): https://kurocat.org/releases/v5.1.3/KuroCat-5.1.3-x64-setup.exe
 - Windows 7 SP1 (x64 Portable w/ WebView2 109): https://kurocat.org/releases/v5.1.3/KuroCat-v5.1.3-win7-x64-portable.zip
+- Windows 7 SP1 (32-bit x86 Portable w/ WebView2 109): https://kurocat.org/releases/v5.1.3/KuroCat-v5.1.3-win7-x86-portable.zip
 - macOS 10.15+ Universal (Apple Silicon & Intel DMG): https://kurocat.org/releases/v5.1.3/KuroCat-v5.1.3-macos-universal.dmg
 - macOS Homebrew Cask: \`brew install --cask qianyiai/tap/kurocat\`
 - Linux x86_64 \`.deb\`: https://kurocat.org/releases/v5.1.3/KuroCat-v5.1.3-linux-amd64.deb
@@ -669,6 +673,7 @@ Every topic hub is pre-rendered in Chinese (\`zh-CN\`), English (\`/en/\`), Japa
 - Linux x86_64 \`.AppImage\`: https://kurocat.org/releases/v5.1.3/KuroCat-v5.1.3-linux-amd64.AppImage
 - Linux ARM64 \`.AppImage\`: https://kurocat.org/releases/v5.1.3/KuroCat-v5.1.3-linux-arm64.AppImage
 - Android APK: https://kurocat.org/releases/v5.1.3/KuroCat-v5.1.3-android.apk
+- Official Quark Cloud Mirror (Win / macOS / Android): https://pan.quark.cn/s/673684ea4103 (\`KuroCat 谦一_官方\`, code \`/~f3813cZv6O~:/\`)
 - GitHub Releases (all platforms): https://github.com/qianyiai/KuroCat/releases
 
 ## Localized Demo Media
